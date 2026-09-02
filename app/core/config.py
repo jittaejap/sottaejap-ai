@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """소때잡 AI 서버 실행 설정."""
+    """소때잡 AI 서버 실행 설정 (07 §3)."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -20,11 +20,13 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_model: str = "gpt-4o-mini"
+    llm_timeout_seconds: float = 8.0
     spring_base_url: str = "http://localhost:8080"
+    spring_timeout_seconds: float = 10.0
+    internal_shared_secret: str | None = Field(default=None, repr=False)
     database_url: str | None = Field(default=None, repr=False)
     ai_server_host: str = "0.0.0.0"
     ai_server_port: int = 8000
-    spring_timeout_seconds: float = 10.0
 
 
 @lru_cache
@@ -32,4 +34,3 @@ def get_settings() -> Settings:
     """프로세스에서 재사용할 설정 인스턴스를 반환한다."""
 
     return Settings()
-

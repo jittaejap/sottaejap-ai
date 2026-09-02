@@ -1,0 +1,108 @@
+name: 버그 수정
+description: 발생한 문제를 재현하고 수정합니다.
+title: '[Fix] '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        같은 문제가 이미 등록되어 있는지 먼저 확인해 주세요.
+        공개하면 안 되는 개인정보, API 키, 공유 시크릿, 보안 취약점은 Issue에 작성하지 마세요.
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: 영향 영역
+      description: 문제가 발생한 영역을 선택해 주세요.
+      options:
+        - "/chat API · DTO (api · schemas)"
+        - Agent · 프롬프트 · Tool Calling (agent · tools)
+        - Spring 연동 (clients)
+        - 회고 구조화 · 표준 태그 (reflection)
+        - LLM 호출 · 폴백 템플릿 (core/llm · ai/fallback)
+        - 금융 RAG (rag · scripts)
+        - 설정 · 의존성 · Docker
+        - CI/CD · 배포
+        - 문서
+        - 여러 영역
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 문제
+      description: 발생한 문제와 사용자 또는 시스템에 미치는 영향을 설명해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 재현 방법
+      description: 같은 문제를 확인할 수 있도록 순서대로 작성해 주세요. /chat 문제라면 요청 본문(task_context 포함)을 붙여 주세요.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-result
+    attributes:
+      label: 예상 결과
+      description: 정상적으로 동작했을 때의 결과를 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-result
+    attributes:
+      label: 실제 결과
+      description: 실제로 확인한 결과와 오류 메시지를 작성해 주세요. 응답의 fallback 값도 함께 적어 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 실행 환경
+      description: 브랜치 또는 커밋, 운영체제, Python 버전, OpenAI 키 유무 등 재현에 필요한 정보를 작성해 주세요.
+      placeholder: |
+        - 브랜치 또는 커밋:
+        - 운영체제:
+        - Python 버전:
+        - OPENAI_API_KEY 설정 여부:
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 로그와 자료
+      description: 원인 파악에 도움이 되는 로그, 요청·응답 본문이 있다면 첨부해 주세요. 시크릿과 키는 가립니다.
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: 예상 원인과 수정 방향
+      description: 예상하는 원인이나 해결 방법이 있다면 작성해 주세요.
+
+  - type: textarea
+    id: completion-criteria
+    attributes:
+      label: 완료 조건
+      description: 수정이 완료됐다고 판단할 수 있는 조건과 검증 방법을 작성해 주세요.
+      placeholder: |
+        - [ ] 재현 테스트를 추가하고 통과한다.
+        - [ ] pytest 전체가 통과한다.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: sensitive-data
+    attributes:
+      label: 민감정보 확인
+      options:
+        - label: 공개하면 안 되는 개인정보, API 키, 공유 시크릿, 보안 취약점이 포함되지 않았습니다.
+          required: true

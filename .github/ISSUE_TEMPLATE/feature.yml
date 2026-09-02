@@ -1,0 +1,90 @@
+name: 기능 개발
+description: 새로운 기능의 목적과 완료 조건을 정의합니다.
+title: '[Feat] '
+body:
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: 영향 영역
+      description: 기능을 구현할 영역을 선택해 주세요.
+      options:
+        - "/chat API · DTO (api · schemas)"
+        - Agent · 프롬프트 · Tool Calling (agent · tools)
+        - Spring 연동 (clients)
+        - 회고 구조화 · 표준 태그 (reflection)
+        - LLM 호출 · 폴백 템플릿 (core/llm · ai/fallback)
+        - 금융 RAG (rag · scripts)
+        - 설정 · 의존성 · Docker
+        - CI/CD · 배포
+        - 문서
+        - 여러 영역
+    validations:
+      required: true
+
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 개발 목적
+      description: 이 기능이 필요한 이유와 해결하려는 문제를 설명해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 구현 범위
+      description: 이번 작업에 포함할 기능과 변경 사항을 작성해 주세요.
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: 제외 범위
+      description: 관련은 있지만 이번 작업에서 다루지 않을 내용을 작성해 주세요. 없다면 "없음"으로 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: owner-layer
+    attributes:
+      label: 소유 계층 확인
+      description: 이 기능이 Spring(데이터 · 규칙 · 계산 · 판정)이 아니라 AI(자연어 · Agent · Tool · RAG · 설명) 소유인 이유를 작성해 주세요. 규칙이나 계산이 섞여 있으면 Spring API 계약부터 협의합니다.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: 영향 항목
+      description: 변경되는 항목을 모두 선택해 주세요.
+      options:
+        - label: /chat 요청 · 응답 계약 (05 §3)
+        - label: Spring 내부 AI API 경로 · 헤더
+        - label: 표준 태그 · enum
+        - label: 프롬프트 또는 템플릿 문구
+        - label: 환경 변수 또는 의존성
+        - label: CI/CD 또는 배포
+        - label: 문서
+
+  - type: textarea
+    id: completion-criteria
+    attributes:
+      label: 완료 조건
+      description: 구현과 검증이 완료됐다고 판단할 수 있는 조건을 작성해 주세요.
+      placeholder: |
+        - [ ] ...
+        - [ ] pytest 통과
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: 참고 자료
+      description: 관련 문서(02 FR 번호 · 05 §3 · 07), Issue 또는 링크를 작성해 주세요. 없다면 "없음"으로 작성해 주세요.
+    validations:
+      required: true

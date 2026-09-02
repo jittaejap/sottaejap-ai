@@ -8,8 +8,8 @@
 
 ```json
 {
-  "purpose": "야식",
-  "companion": "친구",
+  "purpose": "충동",
+  "companion": "혼자",
   "satisfaction": "LOW",
   "repeat_intention": null,
   "needs_clarification": true,
@@ -24,7 +24,7 @@ Natural Language
   ↓
 Extract: 문장에 드러난 후보 추출
   ↓
-Normalize: 자유입력을 표준 표현으로 변환
+Normalize: 자유입력을 표준 태그(목적 7 · 동행인 6)로 변환, 불일치는 None
   ↓
 Validate: 미확정 필드와 추가 질문 필요 여부 확인
   ↓
@@ -36,7 +36,9 @@ ReflectionTool을 통해 Spring에 저장
 ## UNKNOWN 처리
 
 - 자연어로 확인할 수 없는 값은 임의로 추론하지 않는다.
-- 텍스트 필드와 반복 의도는 `None`, 열거형 필드는 `UNKNOWN`을 허용한다.
+- `purpose`·`companion`은 표준 태그 enum(`Purpose` 7종 · `Companion` 6종, 값은 한국어 문자열) 또는 `None`이다. 자유 문자열은 DTO 생성 시 거부된다 (E-20).
+- `satisfaction`은 `HIGH / LOW / UNKNOWN` 3택이다. `MEDIUM`은 없다 (E-23).
+- 반복 의도는 `None`을 허용한다.
 - `needs_clarification`과 `uncertain_fields`로 추가 질문이 필요한 이유를 드러낸다.
 - 만족도 보정이나 Reflection Score는 이 모듈이 계산하지 않는다.
 

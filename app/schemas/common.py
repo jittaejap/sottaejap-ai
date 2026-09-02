@@ -10,11 +10,13 @@ from pydantic import BaseModel, Field
 
 
 class TaskType(StrEnum):
-    """Spring이 전달할 수 있는 현재 사용자 작업 종류."""
+    """Spring이 `task_context.task`로 전달하는 작업 종류 (05 §3)."""
 
     REFLECTION = "REFLECTION"
     ANALYSIS = "ANALYSIS"
     ACTION_PLAN = "ACTION_PLAN"
+    CLUSTER_NAMING = "CLUSTER_NAMING"
+    ANALYSIS_NARRATE = "ANALYSIS_NARRATE"
 
 
 class TaskStatus(StrEnum):
@@ -25,11 +27,22 @@ class TaskStatus(StrEnum):
     COMPLETED = "COMPLETED"
 
 
+class ReflectionStep(StrEnum):
+    """REFLECTION 작업의 `state.step` (05 §3)."""
+
+    INTRO = "INTRO"
+    SATISFACTION = "SATISFACTION"
+    PURPOSE = "PURPOSE"
+    COMPANION = "COMPANION"
+    REPEAT = "REPEAT"
+    CONFIRM = "CONFIRM"
+
+
 class HealthResponse(BaseModel):
     """서버 상태 확인 응답."""
 
     status: str = "ok"
-    service: str = "sottaejab-ai-server"
+    service: str = "sottaejap-ai-server"
 
 
 class ApiResponse(BaseModel):
@@ -39,4 +52,3 @@ class ApiResponse(BaseModel):
     data: Any | None = None
     message: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
-

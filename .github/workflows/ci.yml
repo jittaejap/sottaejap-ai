@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      # 러너 안에서만 유효한 CI 전용 더미 값이다. 운영 비밀값이 아니다.
+      INTERNAL_SHARED_SECRET: ci-only-shared-secret
+      PYTHONUTF8: "1"
+      TZ: Asia/Seoul
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Python 3.12 설정
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+
+      - name: 의존성 설치 (lock 고정)
+        run: python -m pip install -r requirements.lock
+
+      - name: 테스트
+        run: pytest
+
+      - name: Docker 이미지 빌드
+        run: docker build -t sottaejap-ai:ci .

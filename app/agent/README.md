@@ -35,7 +35,7 @@ ToolResult 수집
 ChatResponse
 ```
 
-초기 `SingleAgent.run()`은 실행 가능한 응답 계약만 제공한다. OpenAI Tool Calling 실행 루프와 결과 기반 답변 생성은 TODO다. 별도 Agent Framework는 필요가 검증되기 전 도입하지 않는다.
+현재 `SingleAgent.run()`은 시스템 프롬프트에 현재 작업과 `state`를 붙여 LLM을 1회 호출하고, `LLMUnavailableError`(8초 초과 · 재시도 1회 실패)나 `LLMNotConfiguredError`(키 없음)면 `app/ai/fallback.py` 템플릿으로 `fallback=True` 응답을 만든다. OpenAI Tool Calling 실행 루프와 Tool 결과 기반 답변 생성은 TODO다. 별도 Agent Framework는 필요가 검증되기 전 도입하지 않는다.
 
 ## 파일 책임
 

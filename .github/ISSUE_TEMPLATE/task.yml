@@ -1,0 +1,94 @@
+name: 일반 작업
+description: 문서, 설정, 테스트, CI/CD, 배포 또는 인프라 작업을 정의합니다.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        선택한 작업 유형에 맞춰 제목을 `[Docs]`, `[Chore]`, `[Test]` 형식으로 시작해 주세요.
+
+  - type: dropdown
+    id: task-type
+    attributes:
+      label: 작업 유형
+      description: 가장 가까운 작업 유형을 선택해 주세요.
+      options:
+        - Docs
+        - Chore
+        - Test
+        - CI/CD
+        - Deploy
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: 영향 영역
+      description: 작업할 영역을 선택해 주세요.
+      options:
+        - "/chat API · DTO (api · schemas)"
+        - Agent · 프롬프트 · Tool Calling (agent · tools)
+        - Spring 연동 (clients)
+        - 회고 구조화 · 표준 태그 (reflection)
+        - LLM 호출 · 폴백 템플릿 (core/llm · ai/fallback)
+        - 금융 RAG (rag · scripts)
+        - 설정 · 의존성 · Docker
+        - CI/CD · 배포
+        - 문서
+        - 여러 영역
+    validations:
+      required: true
+
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 작업 목적
+      description: 이 작업이 필요한 이유와 해결하려는 문제를 설명해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 작업 범위
+      description: 변경할 파일, 설정, 문서 또는 시스템을 구체적으로 작성해 주세요.
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: 제외 범위
+      description: 관련은 있지만 이번 작업에서 다루지 않을 내용을 작성해 주세요. 없다면 "없음"으로 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: 검증 방법
+      description: 변경 결과를 확인할 자동 검증과 수동 확인 방법을 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: completion-criteria
+    attributes:
+      label: 완료 조건
+      description: 작업이 완료됐다고 판단할 수 있는 조건을 작성해 주세요.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: 참고 자료
+      description: 관련 문서, Issue 또는 링크를 작성해 주세요. 없다면 "없음"으로 작성해 주세요.
+    validations:
+      required: true
