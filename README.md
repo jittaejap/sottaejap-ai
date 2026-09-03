@@ -2,7 +2,7 @@
 
 소때잡의 자연어 소비 회고, Tool Calling, 금융 지식 검색을 담당하는 Python/FastAPI 서버다. 이 저장소를 받으면 `POST /chat`을 로컬에서 띄우고, Spring `sottaejap-server`와 공유 시크릿으로 연결하고, 기능을 안전하게 추가할 수 있다.
 
-코딩 에이전트(Claude Code · Codex)와 함께 작업한다면 [AGENTS.md](AGENTS.md)를 먼저 읽는다. 브랜치·커밋·PR 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)에 있다. 계약의 정본은 팀 공유 폴더 `myDocs/`의 `01_결정로그.md`·`05_API_명세서.md` §3·`07_기술스택_레포구성.md`다.
+코딩 에이전트(Claude Code · Codex)와 함께 작업한다면 [AGENTS.md](AGENTS.md)를 먼저 읽는다. 브랜치·커밋·PR 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)에 있다. 계약의 정본은 문서 저장소 [`sottaejap-docs`](https://github.com/jittaejap/sottaejap-docs)의 `01_결정로그.md`·`05_API_명세서.md` §3·`07_기술스택_레포구성.md`다.
 
 ## AI 서버 역할
 

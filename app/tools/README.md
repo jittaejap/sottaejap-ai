@@ -25,7 +25,7 @@ Agent → FinancialRagTool → FinancialRetriever
 - Tool은 `httpx`, URL, 인증 Header를 직접 다루지 않는다.
 - 모든 Spring HTTP 호출은 `app/clients/spring_client.py`에 둔다.
 - Spring 응답에 Python 계산을 덧붙이지 않는다.
-- 경로는 `myDocs/05_API_명세서.md` §3 표가 정본이다. 문서에 없는 경로를 만들지 않는다.
+- 경로는 `sottaejap-docs/05_API_명세서.md` §3 표가 정본이다. 문서에 없는 경로를 만들지 않는다.
 - `SpringClient`는 봉투를 벗긴 `data`(camelCase)를 돌려준다. Tool은 그것을 그대로 `ToolResult.data`에 넣는다.
 - `FinancialRagTool`만 `app/rag`를 직접 호출할 수 있다.
 

@@ -6,7 +6,7 @@
 - Agent가 분석 값을 직접 계산하지 않는다.
 - Spring에서 계산된 결과를 최종 분석값으로 사용한다.
 - DB를 AI Agent가 임의로 직접 수정하지 않는다.
-- Spring 내부 AI API 경로는 `myDocs/05_API_명세서.md` §3 표가 정본이다. 문서에 없는 Endpoint를 만들지 않는다.
+- Spring 내부 AI API 경로는 `sottaejap-docs/05_API_명세서.md` §3 표가 정본이다. 문서에 없는 Endpoint를 만들지 않는다.
 - LLM 실패는 5xx가 아니라 `app/ai/fallback.py` 템플릿 + `fallback: true` + 200이다 (FR-04-15).
 - 요청 시 전달된 현재 Task Context를 사용하며 전체 채팅 History에 상태 관리를 맡기지 않는다.
 - 불필요한 Framework, 추상화, 디자인 패턴을 도입하지 않는다.

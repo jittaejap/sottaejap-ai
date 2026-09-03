@@ -1,7 +1,7 @@
 # sottaejap-ai 협업 가이드
 
 이 문서를 읽으면 브랜치를 만들고, 커밋하고, PR을 올리고, 병합 전 검사를 통과시킬 수
-있습니다. 값의 정본은 `myDocs/07_기술스택_레포구성.md` §5·§6·§9입니다. 충돌하면 그쪽이
+있습니다. 값의 정본은 `sottaejap-docs/07_기술스택_레포구성.md` §5·§6·§9입니다. 충돌하면 그쪽이
 우선합니다.
 
 ## 1. Issue
@@ -113,7 +113,7 @@ pytest
 
 `/chat` DTO, `task_context.state` 구조, 표준 태그, Spring 내부 AI API 경로를 바꾸면 세 레포가 같이 깨집니다 (07 §6).
 
-1. `myDocs/05_API_명세서.md` §3을 **먼저** 고칩니다. 문서가 계약입니다. 표준 태그는 `01_결정로그.md` §2입니다.
+1. `sottaejap-docs/05_API_명세서.md` §3을 **먼저** 고칩니다. 문서가 계약입니다. 표준 태그는 `01_결정로그.md` §2입니다.
 2. 팀 채널에 `[계약변경] /chat에 fallback 필드 추가` 형태로 한 줄 공지합니다.
 3. 이 저장소에서는 `app/schemas/chat.py` · `app/schemas/common.py` · `app/reflection/schemas.py` ·
    `app/clients/spring_client.py`를 문서에 맞춰 고칩니다. 통합 담당(고현석)이 `sottaejap-server`의

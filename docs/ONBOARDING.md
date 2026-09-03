@@ -31,7 +31,7 @@ AI 서버는 Single Agent, 의도 파악, 회고 구조화, Tool Calling, 금융
 
 1. [`AGENTS.md`](../AGENTS.md) — 모르면 반드시 틀리는 전제 (사람도 먼저 읽는다)
 2. [`README.md`](../README.md) — 전체 Architecture와 실행 방법
-3. `myDocs/05_API_명세서.md` §3 — `/chat` DTO · `task_context.state` 구조 · Spring 내부 AI API 6종 (팀 공유 폴더)
+3. `sottaejap-docs/05_API_명세서.md` §3 — `/chat` DTO · `task_context.state` 구조 · Spring 내부 AI API 6종 (문서 저장소 `sottaejap-docs`)
 4. [`app/api/chat.py`](../app/api/chat.py) — Spring이 호출하는 `/chat`과 시크릿 검사
 5. [`app/agent/agent.py`](../app/agent/agent.py) — Single Agent 실행 경계와 폴백 분기
 6. [`app/ai/fallback.py`](../app/ai/fallback.py) — LLM 장애 템플릿
