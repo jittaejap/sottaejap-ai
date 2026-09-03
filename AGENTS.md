@@ -89,6 +89,7 @@ Python = Agent / 자연어 / Tool Calling / RAG / 설명
 - `.env`는 터미널로 만듭니다. `.env.example`만 커밋합니다. 줄바꿈은 `.gitattributes`가 LF로 강제합니다.
 - Windows는 `py -3.12 -m venv .venv` · `.\.venv\Scripts\Activate.ps1`입니다.
 - 커밋 메시지에 `Co-Authored-By` 트레일러를 넣지 않습니다.
+- `main`에 직접 push하지 않습니다(본선 30시간만 예외). 흐름은 `Issue → 작업 브랜치 → main 대상 PR → 리뷰 → Squash and merge`이고, 규칙은 [CONTRIBUTING.md](./CONTRIBUTING.md)가 정본입니다.
 
 ## 완료 보고
 
