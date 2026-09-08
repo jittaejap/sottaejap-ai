@@ -26,8 +26,13 @@ class FakeEmbeddings:
         self.calls.append(kwargs)
         if self.error is not None:
             raise self.error
+        # 실제 API처럼 각 항목에 index를 붙인다 — 응답 순서가 입력 순서와
+        # 다를 수 있다는 계약을 테스트가 실제로 검증하게 하기 위함이다.
         return SimpleNamespace(
-            data=[SimpleNamespace(embedding=vector) for vector in self.vectors]
+            data=[
+                SimpleNamespace(embedding=vector, index=index)
+                for index, vector in enumerate(self.vectors)
+            ]
         )
 
 
@@ -68,6 +73,32 @@ def test_embed_returns_vectors_in_order() -> None:
     assert result == [[0.1, 0.2], [0.3, 0.4]]
     assert fake.embeddings.calls[0]["model"] == "text-embedding-3-small"
     assert fake.embeddings.calls[0]["input"] == ["문서1", "문서2"]
+
+
+def test_embed_reorders_response_by_index() -> None:
+    """응답 `data` 순서가 입력 순서와 달라도 `index` 기준으로 바로잡는다."""
+
+    class ShuffledEmbeddings:
+        async def create(self, **_: object) -> object:
+            # 두 번째로 요청한 텍스트의 벡터가 응답에서는 먼저 온다.
+            return SimpleNamespace(
+                data=[
+                    SimpleNamespace(embedding=[9.0, 9.0], index=1),
+                    SimpleNamespace(embedding=[1.0, 1.0], index=0),
+                ]
+            )
+
+    class ShuffledOpenAI:
+        def __init__(self) -> None:
+            self.embeddings = ShuffledEmbeddings()
+
+    embedder = FinancialEmbedder(
+        settings=Settings(openai_api_key="k"), client=ShuffledOpenAI()  # type: ignore[arg-type]
+    )
+
+    result = asyncio.run(embedder.embed(["첫번째", "두번째"]))
+
+    assert result == [[1.0, 1.0], [9.0, 9.0]]
 
 
 def test_embed_wraps_api_error() -> None:

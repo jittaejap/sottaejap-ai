@@ -51,4 +51,8 @@ class FinancialEmbedder:
         except OpenAIError as exc:
             raise LLMUnavailableError("임베딩 호출이 실패했습니다.") from exc
 
-        return [item.embedding for item in response.data]
+        # OpenAI는 배치 응답의 data 순서를 계약으로 보장하지 않는다. item.index로
+        # 정렬해 입력 순서와 어긋나지 않게 한다 — 어긋나면 Chunk 본문과 벡터가
+        # 서로 다른 것끼리 짝지어져도 예외 없이 조용히 저장된다.
+        ordered = sorted(response.data, key=lambda item: item.index)
+        return [item.embedding for item in ordered]
