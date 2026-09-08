@@ -21,10 +21,17 @@ class FakeLLM:
         self.reply = reply
         self.prompts: list[str] = []
         self.calls: list[tuple[str, str]] = []
+        self.temperatures: list[float | None] = []
 
-    async def generate(self, system_prompt: str, user_message: str) -> str:
+    async def generate(
+        self,
+        system_prompt: str,
+        user_message: str,
+        temperature: float | None = None,
+    ) -> str:
         self.prompts.append(system_prompt)
         self.calls.append((system_prompt, user_message))
+        self.temperatures.append(temperature)
         if self.reply is None:
             raise LLMUnavailableError("timeout")
         return self.reply
