@@ -57,9 +57,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        await spring_client.close()
-        if pool is not None:
-            await pool.close()
+        # 한쪽 정리가 실패해도 다른 쪽은 반드시 닫는다.
+        try:
+            await spring_client.close()
+        finally:
+            if pool is not None:
+                await pool.close()
 
 
 def _query(request: ToolRequest) -> str:

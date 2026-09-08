@@ -4,13 +4,14 @@ import asyncio
 from typing import Any
 
 import httpx
+import pytest
 
 from app.agent.handlers.base import HandlerContext
 from app.agent.state import AgentState
 from app.agent.tool_registry import build_default_registry
 from app.schemas.tool import ToolName, ToolRequest
 from app.tools.analysis_tool import AnalysisTool
-from tests.conftest import FakeLLM, SpringClientFactory
+from tests.conftest import FakeLLM, HttpHandler, SpringClientFactory
 
 # 05 §3 표의 Spring 내부 AI API 경로. 회고 저장(POST)은 아직 등록하지 않는다 (#10).
 SPRING_TOOL_PATHS = {
@@ -167,3 +168,36 @@ def test_default_registry_absorbs_unregistered_financial_rag(
     assert result.tool_name is ToolName.FINANCIAL_RAG
     assert result.success is False
     assert result.data is None
+
+
+def _server_error(request: httpx.Request) -> httpx.Response:
+    """Spring 5xx — 봉투를 벗기기 전에 `raise_for_status`가 걸린다."""
+
+    return httpx.Response(503, text="Service Unavailable")
+
+
+def _connect_error(request: httpx.Request) -> httpx.Response:
+    """Spring이 아예 떠 있지 않은 경우."""
+
+    raise httpx.ConnectError("connection refused", request=request)
+
+
+@pytest.mark.parametrize("spring", [_server_error, _connect_error])
+def test_default_registry_absorbs_spring_http_error(
+    spring: HttpHandler,
+    make_client: SpringClientFactory,
+    fake_llm: FakeLLM,
+) -> None:
+    """5xx·연결 실패도 Registry → Tool → SpringClient 배선을 지나 실패 결과가 된다."""
+
+    context = _context(make_client, spring, fake_llm)
+
+    result = asyncio.run(context.call_tool(ToolName.TRANSACTION, {}))
+
+    assert result.tool_name is ToolName.TRANSACTION
+    assert result.success is False
+    assert result.data is None
+    assert result.message == "Tool 결과를 가져오지 못했습니다."
+    # 내부 경로와 user_id가 메시지로 새지 않는다.
+    assert "internal/ai" not in result.message
+    assert "user-1" not in result.message
