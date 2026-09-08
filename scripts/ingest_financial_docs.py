@@ -3,9 +3,11 @@
 텍스트 → Chunk → Embedding → `financial_chunks` 저장까지 실행한다.
 
 `financial_chunks` 테이블은 `sottaejap-server`의 Flyway(V8)가 소유한다 (04 §1).
-여기서는 테이블·확장을 만들지 않고 이미 있는 테이블에 쓰기만 한다. `chunk_id`에
-UNIQUE 제약이 있다고 가정하지 않는다 — 재실행 시 같은 `chunk_id`를 먼저 지우고
-다시 넣어 멱등성을 보장한다.
+여기서는 테이블·확장을 만들지 않고 이미 있는 테이블에 쓰기만 한다. `chunk_id`에는
+UNIQUE 제약이 있고(V8), 재적재 전제는 `ON CONFLICT (chunk_id) DO UPDATE`다 (01 E-85).
+문서 본문이 줄어 Chunk 개수가 줄면 뒤쪽 옛 Chunk가 `ON CONFLICT`만으로는 안 지워지므로,
+같은 `source`의 기존 행을 먼저 전부 지우고 다시 넣는다 — 한 트랜잭션으로 묶어 중간에
+실패해도 새 내용과 옛 내용이 섞여 남지 않게 한다.
 """
 
 import argparse
@@ -24,10 +26,15 @@ from app.rag.chunker import chunk_text  # noqa: E402
 from app.rag.embedding import FinancialEmbedder  # noqa: E402
 from app.rag.retriever import to_vector_literal  # noqa: E402
 
-_DELETE_SQL = "DELETE FROM financial_chunks WHERE chunk_id = $1"
-_INSERT_SQL = """
+_DELETE_BY_SOURCE_SQL = "DELETE FROM financial_chunks WHERE source = $1"
+_UPSERT_SQL = """
 INSERT INTO financial_chunks (chunk_id, content, source, metadata, embedding)
 VALUES ($1, $2, $3, $4::jsonb, $5::vector)
+ON CONFLICT (chunk_id) DO UPDATE SET
+    content = EXCLUDED.content,
+    source = EXCLUDED.source,
+    metadata = EXCLUDED.metadata,
+    embedding = EXCLUDED.embedding
 """
 
 
@@ -62,24 +69,26 @@ async def ingest(document: Path, source: str, dry_run: bool) -> None:
     embedder = FinancialEmbedder(settings=settings)
     vectors = await embedder.embed(chunks)
 
-    pool = await asyncpg.create_pool(settings.database_url, min_size=0)
+    # 일회성 스크립트라 풀이 아니라 연결 하나면 충분하다.
+    conn = await asyncpg.connect(settings.database_url)
     try:
-        async with pool.acquire() as conn:
+        async with conn.transaction():
+            # 같은 source의 옛 Chunk를 전부 지운 뒤 다시 넣는다 — 문서가 줄어
+            # Chunk 개수가 준 경우에도 뒤쪽 옛 Chunk가 남지 않는다.
+            await conn.execute(_DELETE_BY_SOURCE_SQL, source)
             for index, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True)):
-                chunk_id = f"{document.stem}-{index}"
-                async with conn.transaction():
-                    await conn.execute(_DELETE_SQL, chunk_id)
-                    await conn.execute(
-                        _INSERT_SQL,
-                        chunk_id,
-                        chunk,
-                        source,
-                        "{}",
-                        to_vector_literal(vector),
-                    )
+                chunk_id = f"{source}-{index}"
+                await conn.execute(
+                    _UPSERT_SQL,
+                    chunk_id,
+                    chunk,
+                    source,
+                    "{}",
+                    to_vector_literal(vector),
+                )
         print(f"{len(chunks)}개 Chunk를 저장했습니다.")
     finally:
-        await pool.close()
+        await conn.close()
 
 
 def main() -> None:
