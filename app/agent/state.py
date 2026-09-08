@@ -23,7 +23,10 @@ class AgentState(BaseModel):
 
     @property
     def last_question(self) -> str:
-        """가장 최근 assistant 메시지의 내용을 반환한다."""
+        """오름차순 최근 대화에서 가장 최근 assistant 메시지를 반환한다.
+
+        `recent_messages`는 오래된 발화부터 담고 마지막 원소가 최신이다 (E-87).
+        """
 
         for recent_message in reversed(self.recent_messages):
             if recent_message.role == "assistant":
