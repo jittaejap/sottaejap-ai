@@ -7,7 +7,7 @@ import httpx
 from app.agent.agent import SingleAgent
 from app.api.chat import get_agent
 from app.main import app
-from tests.conftest import TEST_SECRET
+from tests.conftest import TEST_SECRET, FakeLLM
 
 
 async def request(method: str, path: str, **kwargs: object) -> httpx.Response:
@@ -34,7 +34,9 @@ def test_chat_requires_internal_secret() -> None:
     assert missing.json()["detail"]["code"] == "UNAUTHORIZED"
 
 
-def test_chat_with_secret_returns_reply_and_fallback_flag(fake_llm) -> None:
+def test_chat_with_secret_returns_reply_and_fallback_flag(
+    fake_llm: FakeLLM,
+) -> None:
     app.dependency_overrides[get_agent] = lambda: SingleAgent(llm_client=fake_llm)  # type: ignore[arg-type]
     try:
         response = asyncio.run(

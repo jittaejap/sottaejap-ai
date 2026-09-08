@@ -11,9 +11,10 @@ from app.agent.tool_registry import ToolRegistry
 from app.clients.spring_client import SpringApiError
 from app.rag.retriever import RetrieverUnavailableError
 from app.schemas.tool import ToolName, ToolRequest, ToolResult
+from tests.conftest import FakeLLM
 
 
-def test_handler_context_generate_uses_prompt_builder(fake_llm) -> None:
+def test_handler_context_generate_uses_prompt_builder(fake_llm: FakeLLM) -> None:
     context = HandlerContext(
         state=AgentState(message="사용자 메시지"),
         llm=fake_llm,  # type: ignore[arg-type]
@@ -27,7 +28,7 @@ def test_handler_context_generate_uses_prompt_builder(fake_llm) -> None:
     assert "Task별 지시문" in fake_llm.calls[0][0]
 
 
-def test_handler_context_call_tool_returns_result(fake_llm) -> None:
+def test_handler_context_call_tool_returns_result(fake_llm: FakeLLM) -> None:
     registry = ToolRegistry()
     requests: list[ToolRequest] = []
 
@@ -56,7 +57,7 @@ def test_handler_context_call_tool_returns_result(fake_llm) -> None:
     ]
 
 
-def test_handler_context_absorbs_unknown_tool(fake_llm) -> None:
+def test_handler_context_absorbs_unknown_tool(fake_llm: FakeLLM) -> None:
     context = HandlerContext(
         state=AgentState(message="분석해 줘"),
         llm=fake_llm,  # type: ignore[arg-type]
@@ -81,7 +82,10 @@ def test_handler_context_absorbs_unknown_tool(fake_llm) -> None:
         ValueError("잘못된 결과"),
     ],
 )
-def test_handler_context_absorbs_tool_errors(error: Exception, fake_llm) -> None:
+def test_handler_context_absorbs_tool_errors(
+    error: Exception,
+    fake_llm: FakeLLM,
+) -> None:
     registry = ToolRegistry()
 
     async def handler(request: ToolRequest) -> ToolResult:
@@ -103,7 +107,7 @@ def test_handler_context_absorbs_tool_errors(error: Exception, fake_llm) -> None
 
 
 def test_handler_context_does_not_expose_internal_url_in_error_message(
-    fake_llm,
+    fake_llm: FakeLLM,
 ) -> None:
     registry = ToolRegistry()
     request = httpx.Request(

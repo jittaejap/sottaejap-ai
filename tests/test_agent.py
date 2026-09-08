@@ -9,9 +9,10 @@ from app.agent.handlers import HANDLERS
 from app.agent.handlers.base import HandlerContext
 from app.schemas.chat import ChatMessage, ChatRequest, ChatResponse
 from app.schemas.common import TaskType
+from tests.conftest import FakeLLM
 
 
-def test_agent_returns_llm_reply_without_fallback(fake_llm) -> None:
+def test_agent_returns_llm_reply_without_fallback(fake_llm: FakeLLM) -> None:
     response = asyncio.run(
         SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
             ChatRequest(message="이번 소비를 돌아볼래")
@@ -24,7 +25,9 @@ def test_agent_returns_llm_reply_without_fallback(fake_llm) -> None:
     assert response.tool_results == []
 
 
-def test_agent_passes_task_context_and_last_question_to_prompt(fake_llm) -> None:
+def test_agent_passes_task_context_and_last_question_to_prompt(
+    fake_llm: FakeLLM,
+) -> None:
     asyncio.run(
         SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
             ChatRequest(
@@ -44,7 +47,7 @@ def test_agent_passes_task_context_and_last_question_to_prompt(fake_llm) -> None
 
 def test_agent_routes_active_task_to_registered_handler(
     monkeypatch: pytest.MonkeyPatch,
-    fake_llm,
+    fake_llm: FakeLLM,
 ) -> None:
     calls: list[str] = []
 
@@ -69,7 +72,7 @@ def test_agent_routes_active_task_to_registered_handler(
 
 def test_agent_skips_handler_for_completed_task(
     monkeypatch: pytest.MonkeyPatch,
-    fake_llm,
+    fake_llm: FakeLLM,
 ) -> None:
     calls: list[str] = []
 
@@ -94,7 +97,7 @@ def test_agent_skips_handler_for_completed_task(
 
 def test_agent_handles_llm_failure_from_handler(
     monkeypatch: pytest.MonkeyPatch,
-    fake_llm,
+    fake_llm: FakeLLM,
 ) -> None:
     fake_llm.reply = None
 
@@ -120,7 +123,7 @@ def test_agent_handles_llm_failure_from_handler(
     assert response.reply == "이 소비, 만족하셨나요?"
 
 
-def test_agent_falls_back_to_template_when_llm_fails(fake_llm) -> None:
+def test_agent_falls_back_to_template_when_llm_fails(fake_llm: FakeLLM) -> None:
     fake_llm.reply = None
 
     response = asyncio.run(

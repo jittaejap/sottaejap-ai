@@ -7,9 +7,10 @@ import httpx
 import pytest
 
 from app.clients.spring_client import SpringApiError
+from tests.conftest import SpringClientFactory
 
 
-def test_paths_and_header_follow_spec(make_client) -> None:
+def test_paths_and_header_follow_spec(make_client: SpringClientFactory) -> None:
     seen: list[tuple[str, str, str | None]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -38,7 +39,9 @@ def test_paths_and_header_follow_spec(make_client) -> None:
     assert all(s[2] == "s3cret" for s in seen)
 
 
-def test_save_reflection_sends_snake_case_json_body(make_client) -> None:
+def test_save_reflection_sends_snake_case_json_body(
+    make_client: SpringClientFactory,
+) -> None:
     bodies: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -53,7 +56,9 @@ def test_save_reflection_sends_snake_case_json_body(make_client) -> None:
     assert bodies == [{"transaction_id": 1, "repeat_intention": False}]
 
 
-def test_envelope_is_unwrapped_and_errors_raise(make_client) -> None:
+def test_envelope_is_unwrapped_and_errors_raise(
+    make_client: SpringClientFactory,
+) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/memory"):
             return httpx.Response(
@@ -71,7 +76,7 @@ def test_envelope_is_unwrapped_and_errors_raise(make_client) -> None:
     asyncio.run(run())
 
 
-def test_http_error_propagates(make_client) -> None:
+def test_http_error_propagates(make_client: SpringClientFactory) -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"success": False, "error": {"code": "UNAUTHORIZED", "message": ""}})
 

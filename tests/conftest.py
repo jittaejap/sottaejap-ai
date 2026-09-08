@@ -11,6 +11,7 @@ from app.core.llm import LLMUnavailableError
 
 TEST_SECRET = "test-shared-secret"
 HttpHandler = Callable[[httpx.Request], httpx.Response]
+SpringClientFactory = Callable[[HttpHandler], SpringClient]
 
 
 class FakeLLM:
@@ -37,7 +38,7 @@ def fake_llm() -> FakeLLM:
 
 
 @pytest.fixture
-def make_client() -> Callable[[HttpHandler], SpringClient]:
+def make_client() -> SpringClientFactory:
     """MockTransport handler로 격리된 SpringClient를 만든다."""
 
     settings = Settings(
