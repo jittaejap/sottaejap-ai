@@ -8,6 +8,11 @@ UNIQUE 제약이 있고(V8), 재적재 전제는 `ON CONFLICT (chunk_id) DO UPDA
 문서 본문이 줄어 Chunk 개수가 줄면 뒤쪽 옛 Chunk가 `ON CONFLICT`만으로는 안 지워지므로,
 같은 `source`의 기존 행을 먼저 전부 지우고 다시 넣는다 — 한 트랜잭션으로 묶어 중간에
 실패해도 새 내용과 옛 내용이 섞여 남지 않게 한다.
+
+`source`는 문서의 식별자다 — 재적재 삭제 기준이 `source` 컬럼이라, 같은 문서를 다른
+`--source` 값으로 다시 넣으면 새 값으로 저장되고 이전 값의 행은 지워지지 않은 채 남는다.
+한 번 정한 `source`는 그 문서에 계속 같은 값으로 쓴다. `chunk_id`·`source`는 V8에서
+`VARCHAR(255)`라 짧은 식별자를 쓴다.
 """
 
 import argparse
@@ -43,7 +48,10 @@ def parse_args() -> argparse.Namespace:
         description="금융 문서를 Chunk·Embedding해 financial_chunks에 적재한다"
     )
     parser.add_argument("document", type=Path, help="UTF-8 텍스트 문서 경로")
-    parser.add_argument("--source", help="출처 표기 (기본: 파일명)")
+    parser.add_argument(
+        "--source",
+        help="문서 식별자 (기본: 파일명). 한 번 정하면 바꾸지 않는다 — 짧게",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
