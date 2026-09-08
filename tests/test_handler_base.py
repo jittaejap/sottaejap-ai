@@ -127,3 +127,22 @@ def test_tool_receipt_removes_data_without_mutating_original() -> None:
         message="조회 완료",
     )
     assert result.data == {"private": "result"}
+
+
+def test_tool_receipt_preserves_reflection_data() -> None:
+    reflection = {
+        "purpose": "충동",
+        "companion": "혼자",
+        "uncertain_fields": ["satisfaction"],
+    }
+    result = ToolResult(
+        tool_name=ToolName.REFLECTION,
+        data=reflection,
+        message="회고 후보 추출 완료",
+    )
+
+    receipt = tool_receipt(result)
+
+    assert receipt == result
+    assert receipt is not result
+    assert receipt.data == reflection

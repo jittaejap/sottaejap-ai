@@ -63,7 +63,14 @@ class HandlerContext:
 
 
 def tool_receipt(result: ToolResult) -> ToolResult:
-    """응답용 Tool 영수증에서 내부 결과 data를 비운다."""
+    """응답용 Tool 영수증을 만들되 회고 후보 data는 보존한다.
+
+    ``reflection`` 결과의 ``data``는 Spring이 회고 단계 진행에 사용하는
+    계약 필드이므로 비우지 않는다 (05 API 명세서 §3).
+    """
+
+    if result.tool_name is ToolName.REFLECTION:
+        return result.model_copy()
 
     return result.model_copy(update={"data": None})
 
