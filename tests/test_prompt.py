@@ -22,12 +22,9 @@ def test_system_prompt_follows_service_tone_rules() -> None:
 
 def test_system_prompt_few_shot_examples_are_short_haeyo_style() -> None:
     examples = [
-        "제공된 집계에서 이번 달 식비는 계획한 금액 안으로 확인돼요. 배달 소비는 지난달보다 늘어난 것으로 나와요.",
+        "이번 달 식비는 계획한 금액 안으로 확인돼요. 배달 소비는 지난달보다 늘어난 것으로 나와요.",
         "확인된 근거가 없어 지금은 소비 흐름을 설명하기 어려워요.",
     ]
-
-    assert "제공된 집계" in examples[0]
-    assert "확인된 근거가 없어" in examples[1]
 
     for example in examples:
         assert f'- "{example}"' in SYSTEM_PROMPT
