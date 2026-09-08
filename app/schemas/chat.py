@@ -26,7 +26,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     """Single Agent의 자연어 응답과 Tool 실행 결과.
 
-    `fallback`은 LLM 8초 초과·오류로 템플릿 응답을 돌려줄 때 True다 (FR-04-15 · NFR-04).
+    `fallback`은 LLM 6초 초과·오류로 템플릿 응답을 돌려줄 때 True다 (FR-04-15 · NFR-04).
     """
 
     reply: str

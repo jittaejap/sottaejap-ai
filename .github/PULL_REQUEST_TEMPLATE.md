@@ -13,7 +13,7 @@
 ## 실행 안내
 
 <!-- 리뷰나 검증을 시작하기 전에 필요한 작업을 순서대로 작성해 주세요. 실행 위치와 명령을 함께 적고, 없다면 "없음"으로 작성해 주세요. -->
-<!-- 예: 환경 변수가 추가되었습니다. `.env`에 `LLM_TIMEOUT_SECONDS=8`을 넣고 `uvicorn app.main:app --reload`로 확인해 주세요. -->
+<!-- 예: 환경 변수가 추가되었습니다. `.env`에 `LLM_TIMEOUT_SECONDS=6`을 넣고 `uvicorn app.main:app --reload`로 확인해 주세요. -->
 
 - 없음
 

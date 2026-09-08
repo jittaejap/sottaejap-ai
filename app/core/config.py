@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_model: str = "gpt-4o-mini"
-    llm_timeout_seconds: float = 8.0
+    llm_timeout_seconds: float = 6.0
     spring_base_url: str = "http://localhost:8080"
     spring_timeout_seconds: float = 10.0
     internal_shared_secret: str | None = Field(default=None, repr=False)

@@ -64,7 +64,7 @@ POST /chat  ← X-Internal-Secret 검사 (없거나 다르면 401)
   ↓
 SingleAgent
   ↓
-LLM 호출 (8초 · 재시도 1회) ──실패──► app/ai/fallback.py 템플릿 · fallback=true
+LLM 호출 (6초 · 재시도 1회) ──실패──► app/ai/fallback.py 템플릿 · fallback=true
   ↓
 현재 Task Context 확인 및 Tool 선택 (TODO)
   ↓
@@ -127,7 +127,7 @@ LangGraph, CrewAI 같은 Agent Framework나 복잡한 RAG Framework는 초기 �
 |---|---:|---|---|
 | `OPENAI_API_KEY` | 아니요 | OpenAI API 인증 키. 없으면 모든 `/chat`이 템플릿 응답(`fallback: true`) | 없음 |
 | `OPENAI_MODEL` | 아니요 | 공통 LLM 모델 | `gpt-4o-mini` |
-| `LLM_TIMEOUT_SECONDS` | 아니요 | LLM 1회 호출 타임아웃(초). 초과 시 1회 재시도 후 템플릿 (NFR-04) | `8` |
+| `LLM_TIMEOUT_SECONDS` | 아니요 | LLM 1회 호출 타임아웃(초). 초과 시 1회 재시도 후 템플릿 (NFR-04) | `6` |
 | `SPRING_BASE_URL` | Spring 연동 시 | Spring 서비스 Base URL | `http://localhost:8080` |
 | `SPRING_TIMEOUT_SECONDS` | 아니요 | AI → Spring 내부 API Timeout(초) | `10` |
 | `INTERNAL_SHARED_SECRET` | **예** | `X-Internal-Secret` 공유 시크릿. `sottaejap-server`의 `AI_SHARED_SECRET`과 같은 값. **비어 있으면 `/chat`이 전부 401** | 없음 |
@@ -184,7 +184,7 @@ pytest
 
 - FastAPI 앱, `GET /health`, `POST /chat` + `X-Internal-Secret` 검사
 - `ChatRequest → SingleAgent → LLM 1회 호출 또는 템플릿 폴백 → ChatResponse(fallback)` 흐름
-- LLM 타임아웃 8초 · 재시도 1회 (`app/core/llm.py`)
+- LLM 타임아웃 6초 · 재시도 1회 (`app/core/llm.py`)
 - 폴백 템플릿 — 작업 5종 · 회고 단계 6종 · `reason_code` 5종 (`app/ai/fallback.py`)
 - `SpringClient` 6종 경로 · 헤더 · 봉투 해제 (05 §3)
 - 회고 DTO — 표준 태그 enum(목적 7 · 동행인 6) · 만족도 3택, 자유 문자열 거부
