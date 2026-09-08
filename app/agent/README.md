@@ -46,3 +46,5 @@ ChatResponse
 
 `state.py`는 영구 저장소가 아니다. 실제 ACTIVE/PAUSED/COMPLETED Task와 사용자별 진행 상태는 Spring/DB가 소유한다.
 
+`recent_messages`는 05 §2·§3의 E-87 계약에 따라 오래된 발화부터 최신 발화 순으로 담는다. `last_question`은
+가장 최근 assistant 발화의 문장 맥락을 제공할 뿐이며, REFLECTION 단계 판정은 `task_context.state.step`을 기준으로 한다.

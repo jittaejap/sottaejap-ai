@@ -21,6 +21,18 @@ class AgentState(BaseModel):
     structured_state: dict[str, Any] = Field(default_factory=dict)
     recent_messages: list[ChatMessage] = Field(default_factory=list)
 
+    @property
+    def last_question(self) -> str:
+        """오름차순 최근 대화에서 가장 최근 assistant 메시지를 반환한다.
+
+        `recent_messages`는 오래된 발화부터 담고 마지막 원소가 최신이다 (E-87).
+        """
+
+        for recent_message in reversed(self.recent_messages):
+            if recent_message.role == "assistant":
+                return recent_message.content
+        return ""
+
     @classmethod
     def from_request(cls, request: ChatRequest) -> "AgentState":
         """느슨한 외부 Task Context를 안전한 실행 상태로 변환한다."""
@@ -51,4 +63,3 @@ def _optional_enum(enum_type: type[TaskType] | type[TaskStatus], value: Any) -> 
         return enum_type(value)
     except (TypeError, ValueError):
         return None
-
