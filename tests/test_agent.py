@@ -4,7 +4,7 @@ import asyncio
 
 from app.agent.agent import SingleAgent
 from app.core.llm import LLMUnavailableError
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatMessage, ChatRequest, ChatResponse
 
 
 class FakeLLM:
@@ -31,19 +31,23 @@ def test_agent_returns_llm_reply_without_fallback() -> None:
     assert response.tool_results == []
 
 
-def test_agent_passes_task_context_to_prompt() -> None:
+def test_agent_passes_task_context_and_last_question_to_prompt() -> None:
     llm = FakeLLM()
     asyncio.run(
         SingleAgent(llm_client=llm).run(  # type: ignore[arg-type]
             ChatRequest(
                 message="계속할게",
                 task_context={"task": "REFLECTION", "status": "ACTIVE", "state": {"step": "PURPOSE"}},
+                recent_messages=[
+                    ChatMessage(role="assistant", content="이 소비에 만족하셨나요?")
+                ],
             )
         )
     )
 
     assert "REFLECTION" in llm.prompts[0]
     assert "PURPOSE" in llm.prompts[0]
+    assert "직전에 사용자에게 한 질문: 이 소비에 만족하셨나요?" in llm.prompts[0]
 
 
 def test_agent_falls_back_to_template_when_llm_fails() -> None:
