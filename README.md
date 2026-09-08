@@ -178,6 +178,40 @@ pytest
 
 테스트는 실제 OpenAI API, Spring API, PostgreSQL을 호출하지 않는다. `tests/conftest.py`가 시크릿을 고정하고 키를 비운다.
 
+## 배포
+
+`main`에 병합되고 **CI가 통과하면** `.github/workflows/deploy.yml`이 자동으로 배포한다.
+GitHub Actions가 이미지를 굽고, EC2는 받아서 켜기만 한다.
+
+```text
+CI 통과 → 이미지 빌드 → Docker Hub push → EC2 SSH → pull·up -d ai → /health 폴링
+```
+
+EC2의 compose 파일은 `sottaejap-server`가 소유한다(`~/apps/sottaejap-server/deploy/docker-compose.yml`).
+이 저장소는 그 파일의 `ai` 서비스만 교체하므로, **`sottaejap-server`가 먼저 한 번 배포돼야** 동작한다.
+파일이 없으면 이유를 출력하고 배포가 멈춘다.
+
+### Actions Secrets
+
+| 이름 | 내용 |
+| --- | --- |
+| `EC2_HOST` | 탄력적 IP 또는 `api.clearpng.cloud` |
+| `EC2_SSH_KEY` | `sottaejap-key.pem` 파일 내용 전체 |
+| `DOCKERHUB_TOKEN` | Docker Hub 액세스 토큰 (계정 `jinocc`). 러너의 push에만 쓴다 — 이미지가 public이라 EC2는 로그인하지 않는다 |
+
+`ai` 컨테이너가 쓰는 환경 변수(`INTERNAL_SHARED_SECRET` · `OPENAI_API_KEY` · `DATABASE_URL` · `SPRING_BASE_URL`)는
+EC2의 `~/apps/.env`에서 온다. 이 저장소가 관리하지 않고 사람이 EC2에 직접 둔다.
+
+### 되돌리기
+
+이미지 태그가 커밋 해시로 고정돼 있다. Docker Hub에 이전 이미지가 남아 있어 재빌드가 필요 없다.
+
+```bash
+# EC2에서
+cd ~/apps/sottaejap-server/deploy
+AI_TAG=<이전 커밋 해시> docker compose --env-file ~/apps/.env up -d ai
+```
+
 ## 현재 구현 범위
 
 완료:
