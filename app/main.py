@@ -27,12 +27,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
 
     settings = get_settings()
-    # min_size=0 — 기동 시 연결하지 않는다. DB가 ai보다 늦게 뜨는 순서를 견딘다.
-    pool = (
-        await asyncpg.create_pool(settings.database_url, min_size=0)
-        if settings.database_url
-        else None
-    )
+    pool = None
+    if settings.database_url:
+        try:
+            # min_size=0 — 기동 시 연결하지 않는다. DB가 ai보다 늦게 뜨는 순서를 견딘다.
+            pool = await asyncpg.create_pool(settings.database_url, min_size=0)
+        except Exception:  # noqa: BLE001 — 풀을 못 열어도 기동은 한다 (E-38 · E-86)
+            pool = None
 
     registry = ToolRegistry()
     if pool is not None:

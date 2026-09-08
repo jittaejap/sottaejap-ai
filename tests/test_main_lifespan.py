@@ -33,6 +33,27 @@ def test_lifespan_skips_financial_rag_without_database_url(
     get_settings.cache_clear()
 
 
+def test_lifespan_starts_without_financial_rag_when_pool_creation_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DATABASE_URL이 잘못됐거나 DB가 안 떠 있어도 기동 자체는 죽지 않는다 (E-38)."""
+
+    async def failing_create_pool(*args: object, **kwargs: object) -> None:
+        raise OSError("연결 거부")
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://broken")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.main.asyncpg.create_pool", failing_create_pool)
+    app = FastAPI()
+
+    async def run() -> None:
+        async with lifespan(app):
+            assert ToolName.FINANCIAL_RAG not in app.state.agent._tool_registry.names()
+
+    asyncio.run(run())
+    get_settings.cache_clear()
+
+
 def test_lifespan_registers_financial_rag_with_database_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
