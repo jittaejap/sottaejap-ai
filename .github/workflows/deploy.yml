@@ -103,9 +103,16 @@ jobs:
             if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
               echo "ai UP ($AI_TAG)"
               # 커밋마다 이미지가 쌓인다. 프리티어 루트 볼륨은 8GB다.
-              # 실행 중이 아닌 이미지만 지운다 — 되돌릴 이미지는 Docker Hub에 남아 있다.
+              # prune -af 는 호스트의 모든 미사용 이미지를 지운다 — sottaejap-server가
+              # 배포한 이미지까지 같이 사라진다. 이 저장소가 올린 것만 골라 지운다.
+              # 되돌릴 이미지는 Docker Hub에 남아 있어 여기서 지워도 안전하다.
               # 정리에 실패해도 ai는 떠 있다. 배포를 빨갛게 만들지 않는다.
-              docker image prune -af || true
+              docker image ls --filter 'reference=jinocc/sottaejap-ai' --filter 'dangling=false' \
+                --format '{{.Repository}}:{{.Tag}}' \
+                | grep -vxF -e "jinocc/sottaejap-ai:$AI_TAG" -e 'jinocc/sottaejap-ai:latest' \
+                | xargs -r docker rmi || true
+              # 태그가 떨어진 레이어만 마저 지운다. -a 가 없어 다른 서비스 이미지는 건드리지 않는다.
+              docker image prune -f || true
               exit 0
             fi
             sleep 5
