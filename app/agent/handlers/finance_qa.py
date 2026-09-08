@@ -13,13 +13,23 @@ from app.rag.prompt import FINANCIAL_RAG_PROMPT
 from app.schemas.chat import ChatResponse
 from app.schemas.tool import ToolName
 
+# 안전 지시(예시 수치를 실제 값처럼 말하지 않기, 근거 없을 때 부연 설명 금지)를
+# 더 엄격히 따르게 하려고 이 Task만 낮은 값을 쓴다 — 다른 Task의 응답 다양성은
+# 그대로 둔다. 로컬 테스트에서 기본 temperature로는 안전 지시 위반이 반복 재현됐다.
+_FINANCE_QA_TEMPERATURE = 0.2
+
 # 근거가 없을 때. 지어내지 말고 모른다고 끝내는 게 FR-12-02의 요구다.
 # 투자 상품 원금 손실 위험 문서를 일부러 안 실었기 때문에(02 FR-12), 투자 질문은
 # 구조적으로 이 경로로만 온다 — 투자 권유 금지(FR-12-03·NFR-05)를 여기에도 넣는다.
+# "사전지식이라도 근거 없으면 언급하지 마세요" 정도의 소프트한 금지는 실제 테스트에서
+# 통하지 않았다 — 모델이 실존하는 외부 기관명·통계를 그대로 답에 넣은 사례가 5/5로
+# 재현됐다. "왜 안 되는지"를 설명하는 대신, 근거 없을 때 낼 수 있는 답변 형식 자체를
+# 좁혀서 부연 설명을 낼 여지를 없앤다.
 NO_EVIDENCE_INSTRUCTION = (
-    "참고할 금융 자료를 찾지 못했습니다. 아는 것처럼 답하지 말고, 해당 내용은 "
-    "확인할 수 없다고 한 문장으로 솔직하게 안내하세요. 숫자나 조건을 지어내지 마세요. "
-    "개인화된 투자 권유나 확정적인 수익 표현은 하지 마세요."
+    "참고할 금융 자료를 찾지 못했습니다. 확인할 수 없다는 문장 하나로만 솔직하게 "
+    "답하고, 배경 설명·수치·기관명·'~에 따르면' 같은 부연 설명은 절대 덧붙이지 "
+    "마세요. 당신이 사전에 알고 있는 내용이라도 마찬가지입니다. "
+    "개인화된 투자 권유나 확정적인 수익 표현도 하지 마세요."
 )
 
 
@@ -36,7 +46,7 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
     )
 
     return ChatResponse(
-        reply=await ctx.generate(instruction),
+        reply=await ctx.generate(instruction, temperature=_FINANCE_QA_TEMPERATURE),
         tool_results=[tool_receipt(result)],
     )
 

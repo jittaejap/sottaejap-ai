@@ -55,6 +55,8 @@ def test_finance_qa_answers_from_evidence_when_available(fake_llm: FakeLLM) -> N
     assert "투자 권유" in instruction  # 근거가 있어도 투자 권유는 금지된다
     # Tool 영수증에는 원본 데이터가 그대로 실리지 않는다 (응답 크기 절약).
     assert response.tool_results[0].data is None
+    # 안전 지시를 더 엄격히 따르게 하려고 이 Task만 낮은 temperature를 쓴다.
+    assert fake_llm.temperatures[0] == 0.2
 
 
 def test_finance_qa_says_cannot_confirm_without_evidence(fake_llm: FakeLLM) -> None:
