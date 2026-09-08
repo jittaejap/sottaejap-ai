@@ -9,7 +9,13 @@ from openai import APITimeoutError
 
 from app.core.config import Settings
 from app.core.llm import LLMNotConfiguredError, LLMUnavailableError
-from app.rag.embedding import FinancialEmbedder
+from app.rag.embedding import EMBEDDING_DIMENSIONS, FinancialEmbedder
+
+
+def test_embedding_dimensions_matches_financial_chunks_column() -> None:
+    """server V8 마이그레이션의 vector(1536)과 이름·값이 같아야 한다 (04 §1 · E-85)."""
+
+    assert EMBEDDING_DIMENSIONS == 1536
 
 
 class FakeEmbeddings:

@@ -86,7 +86,7 @@ def test_search_parses_json_string_metadata() -> None:
         {
             "chunk_id": "c1",
             "content": "내용",
-            "source": None,
+            "source": "출처",
             "metadata": '{"year": 2026}',
             "score": 0.5,
         }
