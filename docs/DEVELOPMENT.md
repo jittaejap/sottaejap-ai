@@ -144,6 +144,8 @@ core ← 외부 Client 구성
 
 실제 OpenAI API와 Spring API 호출은 기본 테스트에 포함하지 않는다. `tests/conftest.py`가 `INTERNAL_SHARED_SECRET`을 고정하고 `OPENAI_API_KEY`를 비운다. Agent에는 `FakeLLM`을 주입하고 `/chat`은 `app.dependency_overrides[get_agent]`로 교체한다. 버그 수정에는 재현 테스트를 먼저 추가한다.
 
+Agent·Handler 테스트는 `tests/conftest.py`의 `fake_llm` fixture를 사용하고, SpringClient 테스트는 같은 파일의 `make_client` fixture에 MockTransport handler를 전달한다. 테스트 파일마다 별도 Fake나 Client 조립 helper를 만들지 않는다.
+
 ```bash
 pytest
 ```
