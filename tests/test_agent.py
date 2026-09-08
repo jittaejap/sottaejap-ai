@@ -47,7 +47,7 @@ def test_agent_passes_task_context_and_last_question_to_prompt() -> None:
 
     assert "REFLECTION" in llm.prompts[0]
     assert "PURPOSE" in llm.prompts[0]
-    assert "직전에 사용자에게 한 질문: 이 소비에 만족하셨나요?" in llm.prompts[0]
+    assert '직전 assistant 발화: "이 소비에 만족하셨나요?"' in llm.prompts[0]
 
 
 def test_agent_falls_back_to_template_when_llm_fails() -> None:

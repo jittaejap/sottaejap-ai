@@ -24,7 +24,9 @@ def build_system_prompt(state: AgentState, instruction: str = "") -> str:
             ]
         )
     if state.last_question:
-        context_lines.append(f"직전에 사용자에게 한 질문: {state.last_question}")
+        last_assistant_message = " ".join(state.last_question.split())
+        quoted_message = json.dumps(last_assistant_message, ensure_ascii=False)
+        context_lines.append(f"직전 assistant 발화: {quoted_message}")
     if instruction:
         context_lines.append(instruction)
 

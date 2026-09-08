@@ -42,5 +42,11 @@ def test_analysis_narrate_has_no_digits() -> None:
     assert not any(ch.isdigit() for ch in reply)
 
 
+def test_finance_qa_has_fixed_unavailable_reply() -> None:
+    assert fallback_reply(TaskType.FINANCE_QA, {}) == (
+        "관련 금융 정보를 지금은 확인할 수 없어요. 잠시 후 다시 시도해 주세요."
+    )
+
+
 def test_unknown_task_returns_default() -> None:
     assert fallback_reply(None, {}) == DEFAULT_REPLY
