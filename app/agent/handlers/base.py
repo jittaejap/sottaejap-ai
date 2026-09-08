@@ -15,6 +15,8 @@ from app.rag.retriever import RetrieverUnavailableError
 from app.schemas.chat import ChatResponse
 from app.schemas.tool import ToolName, ToolRequest, ToolResult
 
+_TOOL_FAILURE_MESSAGE = "Tool 결과를 가져오지 못했습니다."
+
 
 @dataclass(frozen=True)
 class HandlerContext:
@@ -54,11 +56,11 @@ class HandlerContext:
             RetrieverUnavailableError,
             httpx.HTTPError,
             ValueError,
-        ) as exc:
+        ):
             return ToolResult(
                 tool_name=name,
                 success=False,
-                message=str(exc),
+                message=_TOOL_FAILURE_MESSAGE,
             )
 
 

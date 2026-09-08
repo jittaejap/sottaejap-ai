@@ -109,7 +109,36 @@ def test_handler_context_absorbs_tool_errors(error: Exception) -> None:
     assert result.tool_name is ToolName.ANALYSIS
     assert result.success is False
     assert result.data is None
-    assert result.message == str(error)
+    assert result.message == "Tool 결과를 가져오지 못했습니다."
+
+
+def test_handler_context_does_not_expose_internal_url_in_error_message() -> None:
+    registry = ToolRegistry()
+    request = httpx.Request(
+        "GET",
+        "http://spring:8080/internal/ai/users/user-42/transactions",
+    )
+
+    async def handler(tool_request: ToolRequest) -> ToolResult:
+        raise httpx.HTTPStatusError(
+            "404 Not Found",
+            request=request,
+            response=httpx.Response(404, request=request),
+        )
+
+    registry.register(ToolName.TRANSACTION, handler)
+    context = HandlerContext(
+        state=AgentState(user_id="user-42", message="거래를 보여 줘"),
+        llm=FakeLLM(),  # type: ignore[arg-type]
+        tools=registry,
+    )
+
+    result = asyncio.run(context.call_tool(ToolName.TRANSACTION, {}))
+
+    assert result.success is False
+    assert result.message == "Tool 결과를 가져오지 못했습니다."
+    assert "spring:8080" not in result.message
+    assert "user-42" not in result.message
 
 
 def test_tool_receipt_removes_data_without_mutating_original() -> None:
