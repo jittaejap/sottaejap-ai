@@ -13,8 +13,10 @@ from openai import AsyncOpenAI, OpenAIError
 from app.core.config import Settings, get_settings
 from app.core.llm import LLMNotConfiguredError, LLMUnavailableError
 
-# 1536차원. `financial_chunks.embedding`의 vector(N)과 같은 값이어야 한다 (04 §1 · E-85).
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+# `financial_chunks.embedding`의 vector(N)과 같은 값이어야 한다 (04 §1 · E-85).
+# server V8 마이그레이션 주석이 이 이름을 그대로 지목한다 — 상수명을 바꾸지 않는다.
+EMBEDDING_DIMENSIONS = 1536
 
 
 class FinancialEmbedder:

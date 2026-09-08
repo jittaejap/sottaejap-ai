@@ -10,7 +10,8 @@ class FinancialChunk(BaseModel):
 
     chunk_id: str
     content: str
-    source: str | None = None
+    # DB가 NOT NULL이다 (04 §1 v2.9). 옵셔널로 두면 적재 시 23502가 난다.
+    source: str
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
