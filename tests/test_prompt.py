@@ -15,14 +15,19 @@ def test_system_prompt_follows_service_tone_rules() -> None:
     assert "반말, 격식체, 이모지는 사용하지 않습니다." in SYSTEM_PROMPT
     assert "한두 문장의 한 문단" in SYSTEM_PROMPT
     assert "지킬 만한 소비가 있으면 그것부터 먼저" in SYSTEM_PROMPT
-    assert all(word not in SYSTEM_PROMPT for word in ("후회", "탈락", "아웃"))
+    assert "사용자의 소비를 부정적으로 단정하지 않습니다." in SYSTEM_PROMPT
+    assert "사용자에게 '후회'를 유도하는 언어를 사용하지 않습니다." in SYSTEM_PROMPT
+    assert "'탈락', '아웃', 'Out'처럼 소비를 판결하는 어휘" in SYSTEM_PROMPT
 
 
 def test_system_prompt_few_shot_examples_are_short_haeyo_style() -> None:
     examples = [
-        "계획한 식비는 잘 지키고 있어요. 잦아진 배달 소비는 조금씩 조정해 볼 수 있어요.",
-        "확인된 근거 안에서 소비 흐름을 짧게 설명해 드릴게요.",
+        "제공된 집계에서 이번 달 식비는 계획한 금액 안으로 확인돼요. 배달 소비는 지난달보다 늘어난 것으로 나와요.",
+        "확인된 근거가 없어 지금은 소비 흐름을 설명하기 어려워요.",
     ]
+
+    assert "제공된 집계" in examples[0]
+    assert "확인된 근거가 없어" in examples[1]
 
     for example in examples:
         assert f'- "{example}"' in SYSTEM_PROMPT
