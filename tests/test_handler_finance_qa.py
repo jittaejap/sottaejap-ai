@@ -52,6 +52,7 @@ def test_finance_qa_answers_from_evidence_when_available(fake_llm: FakeLLM) -> N
     instruction = fake_llm.calls[0][0]
     assert "예금자보호제도는 1인당 5천만원까지 보호합니다." in instruction
     assert "예금보험공사" in instruction
+    assert "투자 권유" in instruction  # 근거가 있어도 투자 권유는 금지된다
     # Tool 영수증에는 원본 데이터가 그대로 실리지 않는다 (응답 크기 절약).
     assert response.tool_results[0].data is None
 
@@ -67,6 +68,9 @@ def test_finance_qa_says_cannot_confirm_without_evidence(fake_llm: FakeLLM) -> N
 
     instruction = fake_llm.calls[0][0]
     assert "확인할 수 없다" in instruction
+    # 투자 질문은 원금 손실 위험 문서를 일부러 안 실어(FR-12) 구조적으로 이 경로로
+    # 오므로, 투자 권유 금지가 여기에도 있어야 한다 (FR-12-03 · NFR-05).
+    assert "투자 권유" in instruction
     assert response.tool_results[0].success is False
 
 

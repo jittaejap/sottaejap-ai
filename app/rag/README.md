@@ -27,11 +27,11 @@
 - `schemas.py`: Source와 Metadata를 보존하는 Chunk/SearchResult DTO
 - `scripts/ingest_financial_docs.py`: 문서 적재 파이프라인 진입점
 
-현재 Retriever는 외부 DB 없이 빈 목록을 반환한다. 실제 금융 문서, Embedding Provider, pgVector 스키마와 Top-K 검색은 TODO다.
+Retriever·Embedder·적재 스크립트는 실구현됐다(#18). `FINANCE_QA` Handler(#21)가 이 경로를 실제로 호출한다.
 
 ## 확장 방향
 
 MVP에서는 단순 Vector Search를 사용한다. Hybrid Search, Reranking, Query Expansion, Multi Query, Agentic RAG는 초기 범위가 아니다. 향후 품질 측정 결과 필요할 때 `FinancialRetriever` 구현을 교체하되 Agent와 Tool 계약은 유지한다.
 
-검색 결과는 근거 본문, Source, 기준 시점 Metadata를 잃지 않아야 한다. 답변은 개인화된 투자 권유가 아니라 근거 기반 정보 설명으로 제한한다.
+검색 결과는 근거 본문·Source를 잃지 않아야 한다. **정확한 기준 시점 제시는 요구하지 않는다** — 원문이 자동으로 텍스트화된 문서라 숫자·연도가 깨질 수 있어, 출처는 "○○ 기관에 따르면"처럼 느슨하게만 언급한다. 답변은 개인화된 투자 권유가 아니라 근거 기반 정보 설명으로 제한한다.
 
