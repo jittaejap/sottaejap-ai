@@ -6,6 +6,10 @@
 from app.rag.schemas import SearchResult
 
 
+class RetrieverUnavailableError(RuntimeError):
+    """금융 문서 검색 저장소를 사용할 수 없는 경우."""
+
+
 class FinancialRetriever:
     """검색 전략을 Agent와 분리하는 Retriever 경계."""
 
@@ -19,4 +23,3 @@ class FinancialRetriever:
 
         # TODO: Query Embedding과 pgVector 유사도 검색을 연결한다.
         return []
-
