@@ -11,33 +11,24 @@ from app.agent.tool_registry import ToolRegistry
 from app.clients.spring_client import SpringApiError
 from app.rag.retriever import RetrieverUnavailableError
 from app.schemas.tool import ToolName, ToolRequest, ToolResult
+from tests.conftest import FakeLLM
 
 
-class FakeLLM:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, str]] = []
-
-    async def generate(self, system_prompt: str, user_message: str) -> str:
-        self.calls.append((system_prompt, user_message))
-        return "LLM 응답"
-
-
-def test_handler_context_generate_uses_prompt_builder() -> None:
-    llm = FakeLLM()
+def test_handler_context_generate_uses_prompt_builder(fake_llm: FakeLLM) -> None:
     context = HandlerContext(
         state=AgentState(message="사용자 메시지"),
-        llm=llm,  # type: ignore[arg-type]
+        llm=fake_llm,  # type: ignore[arg-type]
         tools=ToolRegistry(),
     )
 
     result = asyncio.run(context.generate("Task별 지시문"))
 
     assert result == "LLM 응답"
-    assert llm.calls[0][1] == "사용자 메시지"
-    assert "Task별 지시문" in llm.calls[0][0]
+    assert fake_llm.calls[0][1] == "사용자 메시지"
+    assert "Task별 지시문" in fake_llm.calls[0][0]
 
 
-def test_handler_context_call_tool_returns_result() -> None:
+def test_handler_context_call_tool_returns_result(fake_llm: FakeLLM) -> None:
     registry = ToolRegistry()
     requests: list[ToolRequest] = []
 
@@ -48,7 +39,7 @@ def test_handler_context_call_tool_returns_result() -> None:
     registry.register(ToolName.ANALYSIS, handler)
     context = HandlerContext(
         state=AgentState(user_id="user-1", message="분석해 줘"),
-        llm=FakeLLM(),  # type: ignore[arg-type]
+        llm=fake_llm,  # type: ignore[arg-type]
         tools=registry,
     )
 
@@ -66,10 +57,10 @@ def test_handler_context_call_tool_returns_result() -> None:
     ]
 
 
-def test_handler_context_absorbs_unknown_tool() -> None:
+def test_handler_context_absorbs_unknown_tool(fake_llm: FakeLLM) -> None:
     context = HandlerContext(
         state=AgentState(message="분석해 줘"),
-        llm=FakeLLM(),  # type: ignore[arg-type]
+        llm=fake_llm,  # type: ignore[arg-type]
         tools=ToolRegistry(),
     )
 
@@ -91,7 +82,10 @@ def test_handler_context_absorbs_unknown_tool() -> None:
         ValueError("잘못된 결과"),
     ],
 )
-def test_handler_context_absorbs_tool_errors(error: Exception) -> None:
+def test_handler_context_absorbs_tool_errors(
+    error: Exception,
+    fake_llm: FakeLLM,
+) -> None:
     registry = ToolRegistry()
 
     async def handler(request: ToolRequest) -> ToolResult:
@@ -100,7 +94,7 @@ def test_handler_context_absorbs_tool_errors(error: Exception) -> None:
     registry.register(ToolName.ANALYSIS, handler)
     context = HandlerContext(
         state=AgentState(message="분석해 줘"),
-        llm=FakeLLM(),  # type: ignore[arg-type]
+        llm=fake_llm,  # type: ignore[arg-type]
         tools=registry,
     )
 
@@ -112,7 +106,9 @@ def test_handler_context_absorbs_tool_errors(error: Exception) -> None:
     assert result.message == "Tool 결과를 가져오지 못했습니다."
 
 
-def test_handler_context_does_not_expose_internal_url_in_error_message() -> None:
+def test_handler_context_does_not_expose_internal_url_in_error_message(
+    fake_llm: FakeLLM,
+) -> None:
     registry = ToolRegistry()
     request = httpx.Request(
         "GET",
@@ -129,7 +125,7 @@ def test_handler_context_does_not_expose_internal_url_in_error_message() -> None
     registry.register(ToolName.TRANSACTION, handler)
     context = HandlerContext(
         state=AgentState(user_id="user-42", message="거래를 보여 줘"),
-        llm=FakeLLM(),  # type: ignore[arg-type]
+        llm=fake_llm,  # type: ignore[arg-type]
         tools=registry,
     )
 
