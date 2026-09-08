@@ -27,8 +27,11 @@ permissions:
 
 jobs:
   deploy:
-    # CI가 실패·취소로 끝났으면 배포하지 않는다. 수동 실행은 그대로 통과시킨다.
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # CI가 실패·취소로 끝났으면 배포하지 않는다.
+    # 수동 실행도 main에서만 받는다 — 아무 브랜치에서나 CI 없이 운영에 나가는 길을 막는다.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       # 배포할 커밋. 이미지 태그이자 되돌릴 때의 좌표다.
@@ -101,7 +104,8 @@ jobs:
               echo "ai UP ($AI_TAG)"
               # 커밋마다 이미지가 쌓인다. 프리티어 루트 볼륨은 8GB다.
               # 실행 중이 아닌 이미지만 지운다 — 되돌릴 이미지는 Docker Hub에 남아 있다.
-              docker image prune -af
+              # 정리에 실패해도 ai는 떠 있다. 배포를 빨갛게 만들지 않는다.
+              docker image prune -af || true
               exit 0
             fi
             sleep 5

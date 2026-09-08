@@ -202,6 +202,10 @@ EC2의 compose 파일은 `sottaejap-server`가 소유한다(`~/apps/sottaejap-se
 `ai` 컨테이너가 쓰는 환경 변수(`INTERNAL_SHARED_SECRET` · `OPENAI_API_KEY` · `DATABASE_URL` · `SPRING_BASE_URL`)는
 EC2의 `~/apps/.env`에서 온다. 이 저장소가 관리하지 않고 사람이 EC2에 직접 둔다.
 
+**`ai`만 올려도 `~/apps/.env`에는 server 쪽 키까지 전부 있어야 한다.** compose는 대상 서비스를 지정해도
+파일 전체를 보간하기 때문이다. `JWT_SECRET` 하나가 없으면 `docker compose ... ai` 가 그 키 이름을 출력하고 멈춘다.
+필요한 키의 전체 목록은 [`sottaejap-server` README §배포](https://github.com/jittaejap/sottaejap-server#배포)에 있다.
+
 ### 되돌리기
 
 이미지 태그가 커밋 해시로 고정돼 있다. Docker Hub에 이전 이미지가 남아 있어 재빌드가 필요 없다.
