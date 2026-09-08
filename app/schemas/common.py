@@ -17,6 +17,7 @@ class TaskType(StrEnum):
     ACTION_PLAN = "ACTION_PLAN"
     CLUSTER_NAMING = "CLUSTER_NAMING"
     ANALYSIS_NARRATE = "ANALYSIS_NARRATE"
+    FINANCE_QA = "FINANCE_QA"
 
 
 class TaskStatus(StrEnum):
