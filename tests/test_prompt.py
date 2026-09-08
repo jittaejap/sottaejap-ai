@@ -10,6 +10,31 @@ from app.schemas.chat import ChatMessage
 from app.schemas.common import TaskType
 
 
+def test_system_prompt_follows_service_tone_rules() -> None:
+    assert "해요체" in SYSTEM_PROMPT
+    assert "반말, 격식체, 이모지는 사용하지 않습니다." in SYSTEM_PROMPT
+    assert "한두 문장의 한 문단" in SYSTEM_PROMPT
+    assert "지킬 만한 소비가 있으면 그것부터 먼저" in SYSTEM_PROMPT
+    assert all(word not in SYSTEM_PROMPT for word in ("후회", "탈락", "아웃"))
+
+
+def test_system_prompt_few_shot_examples_are_short_haeyo_style() -> None:
+    examples = [
+        "계획한 식비는 잘 지키고 있어요. 잦아진 배달 소비는 조금씩 조정해 볼 수 있어요.",
+        "확인된 근거 안에서 소비 흐름을 짧게 설명해 드릴게요.",
+    ]
+
+    for example in examples:
+        assert f'- "{example}"' in SYSTEM_PROMPT
+        sentences = [
+            sentence.strip()
+            for sentence in example.removesuffix(".").split(".")
+            if sentence.strip()
+        ]
+        assert 1 <= len(sentences) <= 2
+        assert all(sentence.endswith("요") for sentence in sentences)
+
+
 @pytest.mark.parametrize(
     ("has_task", "has_last_question", "has_instruction"),
     list(product([False, True], repeat=3)),
