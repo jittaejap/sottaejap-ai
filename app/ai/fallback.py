@@ -31,6 +31,7 @@ _TASK_REPLIES: dict[TaskType, str] = {
     TaskType.ANALYSIS: "지금은 AI 설명을 준비할 수 없어요. 소비 분석 화면의 집계 결과를 확인해 주세요.",
     TaskType.ACTION_PLAN: "지금은 제안 이유를 설명드릴 수 없어요. 제안 목록에서 예상 절감액을 확인해 주세요.",
     TaskType.ANALYSIS_NARRATE: "이번 달 소비 특징은 잠시 후 다시 확인해 주세요.",
+    TaskType.FINANCE_QA: "관련 금융 정보를 지금은 확인할 수 없어요. 잠시 후 다시 시도해 주세요.",
 }
 
 DEFAULT_REPLY = "지금은 답변을 만들 수 없어요. 잠시 후 다시 시도해 주세요."

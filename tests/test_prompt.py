@@ -36,7 +36,8 @@ def test_build_system_prompt_context_combinations(
 
     assert ("현재 작업: REFLECTION" in prompt) is has_task
     assert ('현재 상태(JSON): {"step": "COMPANION"}' in prompt) is has_task
-    assert (f"직전에 사용자에게 한 질문: {last_question}" in prompt) is has_last_question
+    last_message_section = f'직전 assistant 발화: "{last_question}"'
+    assert (last_message_section in prompt) is has_last_question
     assert (instruction in prompt) is has_instruction
 
     included_sections = [
@@ -44,7 +45,7 @@ def test_build_system_prompt_context_combinations(
         for condition, section in [
             (has_task, "현재 작업: REFLECTION"),
             (has_task, '현재 상태(JSON): {"step": "COMPANION"}'),
-            (has_last_question, f"직전에 사용자에게 한 질문: {last_question}"),
+            (has_last_question, last_message_section),
             (has_instruction, instruction),
         ]
         if condition
@@ -67,3 +68,16 @@ def test_build_system_prompt_preserves_existing_task_prompt() -> None:
     assert build_system_prompt(state) == (
         f'{SYSTEM_PROMPT}\n현재 작업: REFLECTION\n현재 상태(JSON): {{"step": "PURPOSE"}}\n'
     )
+
+
+def test_build_system_prompt_separates_multiline_assistant_message() -> None:
+    state = AgentState(
+        message="답변",
+        recent_messages=[
+            ChatMessage(role="assistant", content="첫 줄 질문\n둘째 줄 질문")
+        ],
+    )
+
+    prompt = build_system_prompt(state, "Task별 지시문")
+
+    assert '직전 assistant 발화: "첫 줄 질문 둘째 줄 질문"\nTask별 지시문\n' in prompt
