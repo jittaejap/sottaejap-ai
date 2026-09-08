@@ -7,7 +7,7 @@ HTTP 요청을 DTO로 검증해 Single Agent에 전달하며 도메인 계산은
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from app.agent.agent import SingleAgent
 from app.core.config import get_settings
@@ -17,10 +17,14 @@ router = APIRouter(tags=["chat"])
 _agent = SingleAgent()
 
 
-def get_agent() -> SingleAgent:
-    """테스트에서 교체할 수 있도록 Agent를 의존성으로 노출한다."""
+def get_agent(request: Request) -> SingleAgent:
+    """lifespan이 만든 Agent(금융 RAG가 물린 것)를 우선 쓰고, 없으면 모듈 전역으로 폴백한다.
 
-    return _agent
+    테스트는 `httpx.ASGITransport`로 도는데 그 경로는 lifespan을 실행하지 않는다.
+    폴백이 없으면 Agent를 교체하지 않는 테스트가 전부 AttributeError로 깨진다.
+    """
+
+    return getattr(request.app.state, "agent", None) or _agent
 
 
 def require_internal_secret(
