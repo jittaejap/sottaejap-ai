@@ -7,27 +7,15 @@ import pytest
 from app.agent.agent import SingleAgent
 from app.agent.handlers import HANDLERS
 from app.agent.handlers.base import HandlerContext
-from app.core.llm import LLMUnavailableError
 from app.schemas.chat import ChatMessage, ChatRequest, ChatResponse
 from app.schemas.common import TaskType
 
 
-class FakeLLM:
-    def __init__(self, reply: str | None = "LLM 응답") -> None:
-        self.reply = reply
-        self.prompts: list[str] = []
-
-    async def generate(self, system_prompt: str, user_message: str) -> str:
-        self.prompts.append(system_prompt)
-        if self.reply is None:
-            raise LLMUnavailableError("timeout")
-        return self.reply
-
-
-def test_agent_returns_llm_reply_without_fallback() -> None:
-    llm = FakeLLM()
+def test_agent_returns_llm_reply_without_fallback(fake_llm) -> None:
     response = asyncio.run(
-        SingleAgent(llm_client=llm).run(ChatRequest(message="이번 소비를 돌아볼래"))  # type: ignore[arg-type]
+        SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
+            ChatRequest(message="이번 소비를 돌아볼래")
+        )
     )
 
     assert isinstance(response, ChatResponse)
@@ -36,10 +24,9 @@ def test_agent_returns_llm_reply_without_fallback() -> None:
     assert response.tool_results == []
 
 
-def test_agent_passes_task_context_and_last_question_to_prompt() -> None:
-    llm = FakeLLM()
+def test_agent_passes_task_context_and_last_question_to_prompt(fake_llm) -> None:
     asyncio.run(
-        SingleAgent(llm_client=llm).run(  # type: ignore[arg-type]
+        SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
             ChatRequest(
                 message="계속할게",
                 task_context={"task": "REFLECTION", "status": "ACTIVE", "state": {"step": "PURPOSE"}},
@@ -50,13 +37,14 @@ def test_agent_passes_task_context_and_last_question_to_prompt() -> None:
         )
     )
 
-    assert "REFLECTION" in llm.prompts[0]
-    assert "PURPOSE" in llm.prompts[0]
-    assert '직전 assistant 발화: "이 소비에 만족하셨나요?"' in llm.prompts[0]
+    assert "REFLECTION" in fake_llm.prompts[0]
+    assert "PURPOSE" in fake_llm.prompts[0]
+    assert '직전 assistant 발화: "이 소비에 만족하셨나요?"' in fake_llm.prompts[0]
 
 
 def test_agent_routes_active_task_to_registered_handler(
     monkeypatch: pytest.MonkeyPatch,
+    fake_llm,
 ) -> None:
     calls: list[str] = []
 
@@ -67,7 +55,7 @@ def test_agent_routes_active_task_to_registered_handler(
     monkeypatch.setitem(HANDLERS, TaskType.REFLECTION, handler)
 
     response = asyncio.run(
-        SingleAgent(llm_client=FakeLLM()).run(  # type: ignore[arg-type]
+        SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
             ChatRequest(
                 message="계속할게",
                 task_context={"task": "REFLECTION", "status": "ACTIVE", "state": {}},
@@ -81,6 +69,7 @@ def test_agent_routes_active_task_to_registered_handler(
 
 def test_agent_skips_handler_for_completed_task(
     monkeypatch: pytest.MonkeyPatch,
+    fake_llm,
 ) -> None:
     calls: list[str] = []
 
@@ -91,7 +80,7 @@ def test_agent_skips_handler_for_completed_task(
     monkeypatch.setitem(HANDLERS, TaskType.REFLECTION, handler)
 
     response = asyncio.run(
-        SingleAgent(llm_client=FakeLLM()).run(  # type: ignore[arg-type]
+        SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
             ChatRequest(
                 message="끝났어",
                 task_context={"task": "REFLECTION", "status": "COMPLETED", "state": {}},
@@ -105,14 +94,17 @@ def test_agent_skips_handler_for_completed_task(
 
 def test_agent_handles_llm_failure_from_handler(
     monkeypatch: pytest.MonkeyPatch,
+    fake_llm,
 ) -> None:
+    fake_llm.reply = None
+
     async def handler(context: HandlerContext) -> ChatResponse:
         return ChatResponse(reply=await context.generate("회고 지시문"))
 
     monkeypatch.setitem(HANDLERS, TaskType.REFLECTION, handler)
 
     response = asyncio.run(
-        SingleAgent(llm_client=FakeLLM(reply=None)).run(  # type: ignore[arg-type]
+        SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
             ChatRequest(
                 message="응",
                 task_context={
@@ -128,9 +120,11 @@ def test_agent_handles_llm_failure_from_handler(
     assert response.reply == "이 소비, 만족하셨나요?"
 
 
-def test_agent_falls_back_to_template_when_llm_fails() -> None:
+def test_agent_falls_back_to_template_when_llm_fails(fake_llm) -> None:
+    fake_llm.reply = None
+
     response = asyncio.run(
-        SingleAgent(llm_client=FakeLLM(reply=None)).run(  # type: ignore[arg-type]
+        SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
             ChatRequest(
                 message="응",
                 task_context={"task": "REFLECTION", "status": "ACTIVE", "state": {"step": "SATISFACTION"}},
