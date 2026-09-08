@@ -20,6 +20,7 @@ class _FakePool:
 
 def test_lifespan_skips_financial_rag_without_database_url(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("DATABASE_URL", "")
     get_settings.cache_clear()
@@ -31,10 +32,13 @@ def test_lifespan_skips_financial_rag_without_database_url(
 
     asyncio.run(run())
     get_settings.cache_clear()
+    # DATABASE_URL 자체가 없는 것과 풀 생성 실패를 로그로 구분할 수 있어야 한다.
+    assert "DATABASE_URL이 설정되지 않았습니다" in capsys.readouterr().out
 
 
 def test_lifespan_starts_without_financial_rag_when_pool_creation_fails(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """DATABASE_URL이 잘못됐거나 DB가 안 떠 있어도 기동 자체는 죽지 않는다 (E-38)."""
 
@@ -52,6 +56,7 @@ def test_lifespan_starts_without_financial_rag_when_pool_creation_fails(
 
     asyncio.run(run())
     get_settings.cache_clear()
+    assert "DATABASE_URL로 풀을 열지 못했습니다" in capsys.readouterr().out
 
 
 def test_lifespan_registers_financial_rag_with_database_url(

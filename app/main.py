@@ -28,11 +28,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     settings = get_settings()
     pool = None
-    if settings.database_url:
+    if not settings.database_url:
+        print("금융 RAG 비활성 — DATABASE_URL이 설정되지 않았습니다.")
+    else:
         try:
             # min_size=0 — 기동 시 연결하지 않는다. DB가 ai보다 늦게 뜨는 순서를 견딘다.
             pool = await asyncpg.create_pool(settings.database_url, min_size=0)
         except Exception:  # noqa: BLE001 — 풀을 못 열어도 기동은 한다 (E-38 · E-86)
+            print("금융 RAG 비활성 — DATABASE_URL로 풀을 열지 못했습니다.")
             pool = None
 
     registry = ToolRegistry()
