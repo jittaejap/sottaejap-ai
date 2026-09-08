@@ -4,6 +4,9 @@
 실패는 `LLMUnavailableError`로 올리고, 템플릿 대체는 Agent가 결정한다.
 """
 
+import json
+from typing import Any
+
 from openai import AsyncOpenAI, OpenAIError
 
 from app.core.config import Settings, get_settings
@@ -46,6 +49,33 @@ class LLMClient:
         TODO: Tool Calling 도입 시 응답 타입과 실행 루프를 확장한다.
         """
 
+        return await self._complete(system_prompt, user_message)
+
+    async def generate_json(self, system_prompt: str, user_message: str) -> dict[str, Any]:
+        """결정론적 JSON object 응답을 생성한다."""
+
+        content = await self._complete(
+            system_prompt,
+            user_message,
+            response_format={"type": "json_object"},
+            temperature=0,
+        )
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise LLMUnavailableError("LLM 응답이 유효한 JSON이 아닙니다.") from exc
+        if not isinstance(parsed, dict):
+            raise LLMUnavailableError("LLM JSON 응답이 object가 아닙니다.")
+        return parsed
+
+    async def _complete(
+        self,
+        system_prompt: str,
+        user_message: str,
+        **completion_options: Any,
+    ) -> str:
+        """공통 타임아웃과 재시도 정책으로 모델을 호출한다."""
+
         if self._client is None:
             raise LLMNotConfiguredError("OPENAI_API_KEY가 설정되지 않았습니다.")
 
@@ -59,6 +89,7 @@ class LLMClient:
                         {"role": "user", "content": user_message},
                     ],
                     timeout=self._settings.llm_timeout_seconds,
+                    **completion_options,
                 )
                 return response.choices[0].message.content or ""
             except OpenAIError as exc:
