@@ -7,8 +7,9 @@ import asyncpg
 from fastapi import FastAPI
 
 from app.agent.agent import SingleAgent
-from app.agent.tool_registry import ToolRegistry
+from app.agent.tool_registry import build_default_registry
 from app.api.chat import router as chat_router
+from app.clients.spring_client import SpringClient
 from app.core.config import get_settings
 from app.rag.embedding import FinancialEmbedder
 from app.rag.retriever import FinancialRetriever
@@ -19,7 +20,11 @@ from app.tools.financial_rag_tool import FinancialRagTool
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """금융 RAG용 DB 풀을 열고 그 Retriever를 물린 Agent를 app.state에 둔다 (FR-12).
+    """Spring pull Tool과 금융 RAG를 물린 Agent를 만들어 app.state에 둔다 (05 §3 · FR-12).
+
+    Spring Tool 5종은 항상 등록한다 — HTTP 연결은 `SpringClient` 하나를 공유하고
+    프로세스가 끝날 때 닫는다. Spring이 죽어 있어도 기동은 되고, 호출 실패는
+    `HandlerContext.call_tool`이 `success=False`로 흡수한다.
 
     `DATABASE_URL`이 없으면 기동을 실패시키지 않는다 — Retriever 없이 만든 Registry는
     `FINANCIAL_RAG`를 등록하지 않고, FINANCE_QA는 근거 없음 경로로 내려가 "확인할 수
@@ -38,7 +43,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             print("금융 RAG 비활성 — DATABASE_URL로 풀을 열지 못했습니다.")
             pool = None
 
-    registry = ToolRegistry()
+    spring_client = SpringClient(settings=settings)
+    registry = build_default_registry(spring_client)
     if pool is not None:
         retriever = FinancialRetriever(pool, FinancialEmbedder(settings=settings))
         rag_tool = FinancialRagTool(retriever)
@@ -51,6 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await spring_client.close()
         if pool is not None:
             await pool.close()
 

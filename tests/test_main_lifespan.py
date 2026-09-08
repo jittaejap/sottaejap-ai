@@ -1,4 +1,4 @@
-"""lifespan이 DATABASE_URL 유무에 따라 FINANCIAL_RAG를 조건부로 등록하는지 확인한다."""
+"""lifespan이 Spring Tool 5종을 배선하고 FINANCIAL_RAG를 조건부로 등록하는지 확인한다."""
 
 import asyncio
 
@@ -8,6 +8,14 @@ from fastapi import FastAPI
 from app.core.config import get_settings
 from app.main import lifespan
 from app.schemas.tool import ToolName
+
+SPRING_TOOLS = [
+    ToolName.TRANSACTION,
+    ToolName.REFLECTION,
+    ToolName.ANALYSIS,
+    ToolName.ACTION_PLAN,
+    ToolName.MEMORY,
+]
 
 
 class _FakePool:
@@ -80,3 +88,43 @@ def test_lifespan_registers_financial_rag_with_database_url(
 
     asyncio.run(run())
     get_settings.cache_clear()
+
+
+def test_lifespan_registers_spring_pull_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Spring Tool은 DB·RAG와 무관하게 항상 등록된다 (05 §3)."""
+
+    monkeypatch.setenv("DATABASE_URL", "")
+    get_settings.cache_clear()
+    app = FastAPI()
+
+    async def run() -> None:
+        async with lifespan(app):
+            assert app.state.agent._tool_registry.names() == SPRING_TOOLS
+
+    asyncio.run(run())
+    get_settings.cache_clear()
+
+
+def test_lifespan_closes_spring_client_on_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HTTP 연결은 프로세스가 끝날 때 닫는다."""
+
+    closed: list[bool] = []
+
+    class _FakeSpringClient:
+        async def close(self) -> None:
+            closed.append(True)
+
+    monkeypatch.setenv("DATABASE_URL", "")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.main.SpringClient", lambda **_: _FakeSpringClient())
+    app = FastAPI()
+
+    async def run() -> None:
+        async with lifespan(app):
+            assert closed == []
+
+    asyncio.run(run())
+    get_settings.cache_clear()
+    assert closed == [True]
