@@ -65,7 +65,7 @@ Python = Agent / 자연어 / Tool Calling / RAG / 설명
 
 ## LLM 폴백은 200이다 (FR-04-15 · NFR-04)
 
-- `LLMClient.generate`가 `LLM_TIMEOUT_SECONDS`(8초) 안에 못 끝나거나 오류를 내면 **정확히 1회** 재시도한 뒤
+- `LLMClient.generate`가 `LLM_TIMEOUT_SECONDS`(6초) 안에 못 끝나거나 오류를 내면 **정확히 1회** 재시도한 뒤
   `LLMUnavailableError`를 올립니다. SDK 자체 재시도는 꺼져 있습니다 (`max_retries=0`). 재시도 정책을 다른 곳에 복제하지 않습니다.
 - Agent는 그 오류와 `LLMNotConfiguredError`(키 없음)를 잡아 `app/ai/fallback.py` 템플릿으로 `reply`를 채우고
   **`fallback: true` · HTTP 200**으로 응답합니다. 5xx로 바꾸지 않습니다. 클라이언트는 이 값으로 템플릿 배너를 띄웁니다 (S11).
@@ -80,7 +80,7 @@ Python = Agent / 자연어 / Tool Calling / RAG / 설명
 ## 알려진 갭 — 지어내지 말고 보고한다
 
 - Tool Calling 실행 루프 · 회고 Structured Output · 금융 RAG 적재는 TODO입니다. Agent는 지금 LLM 1회 호출 또는 폴백만 합니다.
-- Spring → AI 타임아웃(15초)과 AI 내부 합계(LLM 8초 + Spring 10초 × 호출 수)의 정합은 9/7 실측 후 확정입니다 (07 §10 리스크 4).
+- Spring → AI 타임아웃(15초)과 AI 내부 합계(LLM 6초 × 최대 2회 + Spring 10초 × 호출 수)의 정합은 9/7 실측 후 확정입니다 (07 §10 리스크 4).
   한 요청에서 Spring을 여러 번 부르는 코드를 넣으면 이 표를 먼저 고칩니다.
 
 ## OS 혼용 (07 §5)

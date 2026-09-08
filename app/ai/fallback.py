@@ -1,6 +1,6 @@
 """LLM 장애 시 돌려줄 템플릿 응답 (FR-04-15 · NFR-04 · 06 R3).
 
-LLM이 8초를 넘기거나 오류를 내면 Agent가 이 템플릿으로 `reply`를 채우고 `fallback=True`로
+LLM이 6초를 넘기거나 오류를 내면 Agent가 이 템플릿으로 `reply`를 채우고 `fallback=True`로
 응답한다. 여기서는 Spring이 `task_context.state`에 실어 보낸 값만 문장에 넣는다.
 집계에 없는 수치나 이유를 만들지 않는다 (NFR-02).
 """

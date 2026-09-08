@@ -88,7 +88,7 @@ Tool Calling 구현 시 실행 횟수 제한, 알 수 없는 Tool, Tool 오류, 
 
 LLM 폴백 규칙 (FR-04-15 · NFR-04):
 
-- `LLMClient.generate`가 `LLM_TIMEOUT_SECONDS`(8초) 초과나 API 오류 시 정확히 1회 재시도한 뒤 `LLMUnavailableError`를 올린다. SDK 자체 재시도는 꺼 둔다.
+- `LLMClient.generate`가 `LLM_TIMEOUT_SECONDS`(6초) 초과나 API 오류 시 정확히 1회 재시도한 뒤 `LLMUnavailableError`를 올린다. SDK 자체 재시도는 꺼 둔다.
 - Agent는 `LLMUnavailableError`·`LLMNotConfiguredError`를 잡아 `fallback_reply(task, state)`로 `reply`를 채우고 `fallback=True`로 응답한다. HTTP 200을 유지한다.
 - 템플릿은 `state`에 있는 값(`transaction` · `reason_code` · `step` · `sample_merchants`)만 문장에 넣는다. `CLUSTER_NAMING`은 12자 이내다.
 - 템플릿 문구를 바꾸면 `tests/test_fallback.py`를 같이 고친다. 문구 담당은 오진호다.
@@ -167,4 +167,3 @@ Merge
 - 미확정 Spring 계약이나 서비스 정책을 구현으로 사실상 확정하지 않는다. 계약을 바꾸면 05 §3을 먼저 고친다 (CONTRIBUTING §6).
 - PR에는 계층 경계 변경 여부와 남은 TODO를 명시한다.
 - 브랜치 · 커밋 형식 · 병합 전 검사는 [CONTRIBUTING.md](../CONTRIBUTING.md)를 따른다.
-
