@@ -1,0 +1,124 @@
+# CI가 main에서 통과한 뒤에만 이미지를 구워 Docker Hub에 올리고, EC2는 받아서 켜기만 한다.
+# compose 파일은 sottaejap-server가 소유한다. 여기서는 EC2에 이미 있는 것을 쓴다.
+#
+# 이미지는 public이라 EC2는 docker login 하지 않는다. 토큰은 러너에만 있고 push에만 쓴다.
+#
+# 필요한 Secrets (Settings > Secrets and variables > Actions):
+#   EC2_HOST         탄력적 IP 또는 api.clearpng.cloud
+#   EC2_SSH_KEY      sottaejap-key.pem 파일 내용 전체
+#   DOCKERHUB_TOKEN  Docker Hub 액세스 토큰 (계정 jinocc, 비밀번호 아님) — push 전용
+name: Deploy
+
+on:
+  # push가 아니라 CI 완료를 받는다. 테스트가 깨진 머지 커밋이 그대로 나가는 것을 막는다.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# 같은 레포에서 배포가 겹치지 않게 한다. 레포끼리 겹치는 것은 EC2의 flock이 막는다.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # CI가 실패·취소로 끝났으면 배포하지 않는다.
+    # 수동 실행도 main에서만 받는다 — 아무 브랜치에서나 CI 없이 운영에 나가는 길을 막는다.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      # 배포할 커밋. 이미지 태그이자 되돌릴 때의 좌표다.
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Docker Hub 로그인
+        uses: docker/login-action@v3
+        with:
+          username: jinocc
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Buildx 준비
+        uses: docker/setup-buildx-action@v3
+
+      - name: 이미지 빌드와 푸시
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # EC2는 커밋 해시 태그를 받아 쓴다. latest는 사람이 손으로 볼 때의 편의용이다.
+          tags: |
+            jinocc/sottaejap-ai:latest
+            jinocc/sottaejap-ai:${{ env.SHA }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: SSH 키 준비
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy.pem
+          chmod 600 ~/.ssh/deploy.pem
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+          # keyscan이 조용히 빈 출력을 내면 다음 ssh가 Host key verification failed로 죽는다.
+          # 원인을 짚기 어려운 실패라 여기서 먼저 멈춘다.
+          test -s ~/.ssh/known_hosts
+
+      - name: 재배포와 헬스체크
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy.pem "ubuntu@$EC2_HOST" "AI_TAG='$SHA' bash -se" <<'EOS'
+          set -euo pipefail
+
+          COMPOSE_DIR=~/apps/sottaejap-server/deploy
+          if [ ! -f "$COMPOSE_DIR/docker-compose.yml" ]; then
+            echo "compose 파일이 EC2에 없다. sottaejap-server를 먼저 배포해야 한다."
+            exit 1
+          fi
+
+          # server와 ai 배포가 동시에 들어와도 한 번에 하나만 돌게 한다.
+          exec 9>/tmp/sottaejap-deploy.lock
+          flock -w 300 9
+
+          cd "$COMPOSE_DIR"
+          dc() { docker compose --env-file "$HOME/apps/.env" "$@"; }
+
+          dc pull ai
+          dc up -d ai
+
+          # 8000은 127.0.0.1에만 열려 있어 EC2 안에서만 확인할 수 있다.
+          for _ in $(seq 1 24); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null; then
+              echo "ai UP ($AI_TAG)"
+              # 커밋마다 이미지가 쌓인다. 프리티어 루트 볼륨은 8GB다.
+              # prune -af 는 호스트의 모든 미사용 이미지를 지운다 — sottaejap-server가
+              # 배포한 이미지까지 같이 사라진다. 이 저장소가 올린 것만 골라 지운다.
+              # 되돌릴 이미지는 Docker Hub에 남아 있어 여기서 지워도 안전하다.
+              # 정리에 실패해도 ai는 떠 있다. 배포를 빨갛게 만들지 않는다.
+              docker image ls --filter 'reference=jinocc/sottaejap-ai' --filter 'dangling=false' \
+                --format '{{.Repository}}:{{.Tag}}' \
+                | grep -vxF -e "jinocc/sottaejap-ai:$AI_TAG" -e 'jinocc/sottaejap-ai:latest' \
+                | xargs -r docker rmi || true
+              # 태그가 떨어진 레이어만 마저 지운다. -a 가 없어 다른 서비스 이미지는 건드리지 않는다.
+              docker image prune -f || true
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "헬스체크 실패 — 최근 로그"
+          dc logs --tail=80 ai
+          exit 1
+          EOS
