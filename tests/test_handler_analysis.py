@@ -17,11 +17,12 @@ def _context(
     fake_llm: FakeLLM,
     state: dict[str, Any],
     registry: ToolRegistry | None = None,
+    message: str = "이번 달 배달 얼마나 썼어?",
 ) -> HandlerContext:
     return HandlerContext(
         state=AgentState(
             user_id="user-1",
-            message="이번 달 배달 얼마나 썼어?",
+            message=message,
             structured_state=state,
         ),
         llm=fake_llm,  # type: ignore[arg-type]
@@ -96,6 +97,30 @@ def test_analysis_answers_from_aggregate(fake_llm: FakeLLM) -> None:
     assert '"pending"' not in instruction
     assert '"points"' not in instruction
     assert response.tool_results[0].data is None
+
+
+def test_analysis_redirects_off_topic_finance_question_without_fallback(
+    fake_llm: FakeLLM,
+) -> None:
+    """소비 집계 밖 금융 상식은 고정 안내만 반환한다 (#66)."""
+
+    registry = ToolRegistry()
+    _register(registry, _analysis_data())
+    context = _context(
+        fake_llm,
+        {},
+        registry,
+        message="예금자보호 한도가 얼마예요?",
+    )
+    fake_llm.reply = analysis.ANALYSIS_OFF_TOPIC_REPLY
+
+    response = asyncio.run(analysis.handle(context))
+
+    assert response.reply == analysis.ANALYSIS_OFF_TOPIC_REPLY
+    assert response.fallback is False
+    instruction = fake_llm.calls[0][0]
+    assert analysis.ANALYSIS_OFF_TOPIC_REPLY in instruction
+    assert "소비 분석 집계와 무관" in instruction
 
 
 def test_analysis_returns_no_retrospect_reply_when_no_valid_clusters(

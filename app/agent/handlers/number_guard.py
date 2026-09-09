@@ -10,10 +10,13 @@ Tool 응답 `byVerdict` camelCase), 이 모듈은 필드 이름을 모른다. �
 
 import re
 
-# 소수점을 한 덩어리로 잡는다. "3.6%"를 "3"·"6"으로 쪼개면 둘 다 한 자리라
-# 아래 서수 예외에 걸려 검사 없이 통과한다 — 지어낸 "9.9%"가 그 구멍으로 샜다(E-79).
-_NUMBER_PATTERN = re.compile(r"\d[\d,]*(?:\.\d+)?")
+# 소수점과 뒤따르는 한글 단위를 한 덩어리로 잡는다. "3.6%"를 "3"·"6"으로
+# 쪼개거나 "5천만"을 한 자리 "5"로만 보면 아래 서수 예외로 검증을 우회한다.
+_NUMBER_PATTERN = re.compile(
+    r"(?P<number>\d[\d,]*(?:\.\d+)?)(?P<units>(?:천|만|억)*)"
+)
 _YEAR_MONTH_PATTERN = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
+_UNIT_MULTIPLIERS = {"천": 1_000, "만": 10_000, "억": 100_000_000}
 
 # 근거 값과 문장 속 값을 견줄 때 허용하는 오차.
 _TOLERANCE = 0.05
@@ -80,14 +83,18 @@ def has_unverified_number(
     한 자리 정수는 서수 표현에 섞일 수 있어 건너뛰되, 뒤의 공백을 제외한 첫
     문자가 `%`면 비율이므로 반드시 검사한다. 퍼센트는 연·월 같은 일반 숫자와
     값이 같아도 통과하지 않도록 `share`에서 만든 별도 집합과 견준다(E-79 · E-101).
+    `천`·`만`·`억`이 붙은 숫자는 각 단위의 배수를 적용한 뒤 근거와 견준다.
     """
 
     for match in _NUMBER_PATTERN.finditer(sentence):
-        text = match.group().replace(",", "")
+        text = match.group("number").replace(",", "")
+        units = match.group("units")
         is_percent = sentence[match.end() :].lstrip().startswith("%")
-        if "." not in text and len(text) < 2 and not is_percent:
+        if "." not in text and len(text) < 2 and not units and not is_percent:
             continue
         value = float(text)
+        for unit in units:
+            value *= _UNIT_MULTIPLIERS[unit]
         candidates = known_percentages if is_percent else known
         if not any(abs(value - candidate) < _TOLERANCE for candidate in candidates):
             return True
