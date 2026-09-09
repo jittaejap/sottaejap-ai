@@ -242,6 +242,30 @@ def test_analysis_treats_transaction_amounts_as_known_numbers(
     assert response.fallback is False
 
 
+def test_analysis_treats_transaction_dates_as_known_numbers(fake_llm: FakeLLM) -> None:
+    """거래 날짜(월·일)를 문장에 그대로 옮겨도 근거 밖 수치로 오탐하지 않는다.
+
+    실측으로 확인된 사고 — `_prompt_transactions`는 `occurredAt`을 문자열
+    그대로 남겨서 `number_guard.known_numbers()`에 안 잡힌다. 모델이 개별
+    거래를 근거로 "8월 22일에 …"처럼 날짜를 쓰면 "22"가 근거 밖 수치로 오탐돼
+    정상 답변이 통째로 버려졌다(로컬 스택 실측, #82).
+    """
+
+    registry = ToolRegistry()
+    _register(registry, _analysis_data())
+    registry.register(
+        ToolName.TRANSACTION,
+        lambda request: _transaction_result(),
+    )
+    context = _context(fake_llm, {}, registry, message="배달에서 뭐 샀어?")
+    fake_llm.reply = "동네마트에서 8월 22일에 4,500원을 결제했어요."
+
+    response = asyncio.run(analysis.handle(context))
+
+    assert response.reply == "동네마트에서 8월 22일에 4,500원을 결제했어요."
+    assert response.fallback is False
+
+
 async def _transaction_result() -> ToolResult:
     return ToolResult(
         tool_name=ToolName.TRANSACTION,
