@@ -8,6 +8,7 @@ from app.agent.handlers.base import HandlerContext
 from app.agent.prompt import HAEYO_RULE
 from app.agent.state import AgentState
 from app.agent.tool_registry import ToolRegistry
+from app.schemas.chat import ChatMessage
 from app.schemas.common import TaskType
 from app.schemas.tool import ToolName, ToolRequest, ToolResult
 from tests.conftest import FakeLLM
@@ -18,12 +19,14 @@ def _context(
     state: dict[str, Any],
     registry: ToolRegistry | None = None,
     message: str = "이번 달 배달 얼마나 썼어?",
+    recent_messages: list[ChatMessage] | None = None,
 ) -> HandlerContext:
     return HandlerContext(
         state=AgentState(
             user_id="user-1",
             message=message,
             structured_state=state,
+            recent_messages=recent_messages or [],
         ),
         llm=fake_llm,  # type: ignore[arg-type]
         tools=registry or ToolRegistry(),
@@ -111,6 +114,43 @@ def test_analysis_answers_from_aggregate(fake_llm: FakeLLM) -> None:
     assert '"pending"' not in instruction
     assert '"points"' not in instruction
     assert response.tool_results[0].data is None
+
+
+def test_analysis_forwards_recent_messages_as_history_for_followup_questions(
+    fake_llm: FakeLLM,
+) -> None:
+    """재현 시나리오 (#80 이슈 재현 2번) — 사용자가 직전에 말한 항목이 그대로 LLM에 닿아야 한다.
+
+    사용자가 "배달만" 줄이고 싶다고 했는데, 되물음("제가 아까 줄이고 싶다고 한 항목이
+    뭐였죠?")에서 이력이 빠지면 모델이 집계표의 `ADJUST` 목록("배달과 교통")으로 메워
+    답해 사용자가 하지 않은 말을 지어낸다. `history`에 그 발화가 그대로 실렸는지 본다
+    — 실제 생성 결과는 FakeLLM이 고정 문자열이라 여기서 보지 않는다.
+    """
+
+    registry = ToolRegistry()
+
+    async def handler(request: ToolRequest) -> ToolResult:
+        return ToolResult(tool_name=ToolName.ANALYSIS, data=_analysis_data())
+
+    registry.register(ToolName.ANALYSIS, handler)
+    recent_messages = [
+        ChatMessage(role="user", content="저는 배달 소비를 줄이고 싶어요."),
+        ChatMessage(role="assistant", content="알겠어요. 함께 살펴볼게요."),
+    ]
+    context = _context(
+        fake_llm,
+        {"analysis_year_month": "2026-08"},
+        registry,
+        message="제가 아까 줄이고 싶다고 한 항목이 뭐였죠?",
+        recent_messages=recent_messages,
+    )
+
+    asyncio.run(analysis.handle(context))
+
+    assert fake_llm.histories[0] == recent_messages
+    instruction = fake_llm.calls[0][0]
+    assert "직전 assistant" not in instruction
+    assert "배달 소비를 줄이고 싶어요" not in instruction
 
 
 def test_analysis_redirects_off_topic_finance_question_without_fallback(

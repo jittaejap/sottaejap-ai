@@ -37,6 +37,7 @@ class HandlerContext:
             build_system_prompt(self.state, instruction),
             self.state.message,
             temperature=temperature,
+            history=self.state.recent_messages,
         )
 
     async def call_tool(

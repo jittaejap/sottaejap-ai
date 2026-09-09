@@ -17,6 +17,7 @@ from openai import (
 )
 
 from app.core.config import Settings, get_settings
+from app.schemas.chat import ChatMessage
 
 LLM_RETRY_COUNT = 1
 # `reply`가 client 이력(recentMessages)에 그대로 돌아가는 경로가 있어 2,000자
@@ -70,6 +71,7 @@ class LLMClient:
         system_prompt: str,
         user_message: str,
         temperature: float | None = None,
+        history: list[ChatMessage] | None = None,
     ) -> str:
         """기본 텍스트 응답을 생성한다.
 
@@ -77,13 +79,19 @@ class LLMClient:
         응답 다양성을 바꾸지 않기 위함이다. 동일 질문 반복 시 답변 표현이 크게
         흔들리는 걸 줄이고 싶은 Task만 낮은 값을 넘긴다(예: FINANCE_QA).
 
+        `history`는 `recent_messages`를 role 보존한 채 그대로 싣는 자리다
+        (#80) — 시스템 프롬프트 문자열에 섞지 않는다. 비우면 종전과 같은
+        `[system, user]` 2건이다.
+
         TODO: Tool Calling 도입 시 응답 타입과 실행 루프를 확장한다.
         """
 
         options: dict[str, Any] = {"max_tokens": MAX_REPLY_TOKENS}
         if temperature is not None:
             options["temperature"] = temperature
-        return await self._complete(system_prompt, user_message, **options)
+        return await self._complete(
+            system_prompt, user_message, history=history, **options
+        )
 
     async def generate_json(self, system_prompt: str, user_message: str) -> dict[str, Any]:
         """결정론적 JSON object 응답을 생성한다.
@@ -115,12 +123,24 @@ class LLMClient:
         self,
         system_prompt: str,
         user_message: str,
+        history: list[ChatMessage] | None = None,
         **completion_options: Any,
     ) -> str:
-        """공통 타임아웃과 재시도 정책으로 모델을 호출한다."""
+        """공통 타임아웃과 재시도 정책으로 모델을 호출한다.
+
+        `history`(`recent_messages`)는 프롬프트 문자열이 아니라 OpenAI가 제공하는
+        `messages` 배열 자리에 role을 보존한 채 끼운다 — 한 덩어리 문자열로 섞으면
+        "사용자가 말한 것"과 "내가 말한 것"의 구분이 사라진다 (#80).
+        """
 
         if self._client is None:
             raise LLMNotConfiguredError("OPENAI_API_KEY가 설정되지 않았습니다.")
+
+        history_messages: list[dict[str, str]] = (
+            [{"role": message.role, "content": message.content} for message in history]
+            if history
+            else []
+        )
 
         last_error: OpenAIError | None = None
         for _ in range(1 + LLM_RETRY_COUNT):
@@ -129,6 +149,7 @@ class LLMClient:
                     model=self._settings.openai_model,
                     messages=[
                         {"role": "system", "content": system_prompt},
+                        *history_messages,
                         {"role": "user", "content": user_message},
                     ],
                     timeout=self._settings.llm_timeout_seconds,
