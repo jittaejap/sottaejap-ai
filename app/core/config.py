@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     spring_timeout_seconds: float = 3.0
     internal_shared_secret: str | None = Field(default=None, repr=False)
     database_url: str | None = Field(default=None, repr=False)
+    # 로컬 741개 Chunk 실측에서 근거없음형 재현 질문(score 0.473)을 거르는
+    # 최소 반올림 값이다. 정답형·근거없음형 분포가 겹치는 한계는 이슈 #28 참고.
+    financial_rag_min_score: float = 0.48
     ai_server_host: str = "0.0.0.0"
     ai_server_port: int = 8000
 

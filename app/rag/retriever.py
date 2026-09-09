@@ -15,6 +15,7 @@ from typing import Any, Protocol
 
 import asyncpg
 
+from app.core.config import Settings, get_settings
 from app.core.llm import LLMNotConfiguredError, LLMUnavailableError
 from app.rag.embedding import FinancialEmbedder
 from app.rag.schemas import FinancialChunk, SearchResult
@@ -26,6 +27,8 @@ FROM financial_chunks
 ORDER BY embedding <=> $1::vector
 LIMIT $2
 """
+
+_DEPOSIT_PROTECTION_LIMIT_TERMS = ("한도", "얼마", "금액", "까지")
 
 
 class RetrieverUnavailableError(RuntimeError):
@@ -49,9 +52,15 @@ class ConnectionPool(Protocol):
 class FinancialRetriever:
     """검색 전략을 Agent와 분리하는 Retriever 경계."""
 
-    def __init__(self, pool: ConnectionPool, embedder: FinancialEmbedder) -> None:
+    def __init__(
+        self,
+        pool: ConnectionPool,
+        embedder: FinancialEmbedder,
+        settings: Settings | None = None,
+    ) -> None:
         self._pool = pool
         self._embedder = embedder
+        self._min_score = (settings or get_settings()).financial_rag_min_score
 
     async def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """질문과 관련된 금융 문서 Chunk를 유사도 높은 순으로 반환한다."""
@@ -60,6 +69,11 @@ class FinancialRetriever:
             raise ValueError("검색어는 비어 있을 수 없습니다.")
         if top_k <= 0:
             raise ValueError("top_k는 1 이상이어야 합니다.")
+        # 현재 배포 코퍼스의 예금자보호 한도는 개정 전 값이다. 잘못된 금액을
+        # 근거로 답하기보다 한도 질문만 근거없음 경로로 보내고, 제도 설명 검색은
+        # 유지한다. 문서를 최신 기준으로 재적재하면 이 임시 가드를 제거한다.
+        if _asks_deposit_protection_limit(query):
+            return []
 
         try:
             vectors = await self._embedder.embed([query])
@@ -83,7 +97,26 @@ class FinancialRetriever:
                 "금융 문서 저장소에 접근할 수 없습니다."
             ) from exc
 
-        return [_to_result(row) for row in rows]
+        results = [_to_result(row) for row in rows]
+        # SQL 검색 경로에서는 score가 항상 계산되지만 DTO는 다른 Retriever 구현을
+        # 위해 옵셔널이다. 품질을 확인할 수 없는 None은 하한 미달과 같이 버린다.
+        return [
+            result
+            for result in results
+            if result.score is not None and result.score >= self._min_score
+        ]
+
+
+def _asks_deposit_protection_limit(query: str) -> bool:
+    """낡은 금액 근거를 노출할 수 있는 예금자보호 한도 질문인지 확인한다."""
+
+    compact = "".join(query.split())
+    asks_about_deposit_protection = "예금자보호" in compact or (
+        "예금" in compact and "보호" in compact
+    )
+    return asks_about_deposit_protection and any(
+        term in compact for term in _DEPOSIT_PROTECTION_LIMIT_TERMS
+    )
 
 
 def to_vector_literal(vector: list[float]) -> str:
