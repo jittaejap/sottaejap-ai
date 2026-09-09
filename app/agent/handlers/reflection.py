@@ -20,11 +20,16 @@ from app.schemas.chat import ChatResponse
 from app.schemas.common import ReflectionStep
 from app.schemas.tool import ToolName, ToolResult
 
+# 마지막 두 문장은 문체 규칙이다. `build_system_prompt()`가 공통 `SYSTEM_PROMPT` **뒤에**
+# 이 지시문을 붙이므로 나중에 붙은 쪽이 이긴다 — 앞의 해요체 규칙만 믿으면 안 된다 (#25와
+# 같은 함정). 특히 "돌아보자고"라는 표현이 문체 본보기로 새어 인사가 통째로 반말로 나왔다.
+# 실측: 고치기 전 반말 4/4 → 고친 뒤 해요체 6/6. `temperature=0.2`는 0/6으로 효과가 없었다.
 INTRO_INSTRUCTION = (
     "회고 대화를 시작하는 첫 인사입니다. 아래 거래 정보와 선정 이유만 사용해서, "
-    "이 거래를 함께 돌아보자고 권하는 두 문장 이내의 인사를 만들어 주세요. "
+    "이 거래를 함께 돌아보기를 권하는 두 문장 이내의 인사를 만들어 주세요. "
     "선정 이유는 주어진 문장의 뜻 안에서만 설명하고, 주어지지 않은 수치나 이유를 "
-    "덧붙이지 마세요. 아직 만족도나 목적을 묻지 마세요."
+    "덧붙이지 마세요. 아직 만족도나 목적을 묻지 마세요. "
+    '두 문장 모두 "~요"로 끝나는 해요체로 씁니다. 반말로 끝내지 않습니다.'
 )
 
 # 05 `POST /retrospects/chat` — Spring이 다음 step을 고르는 순서와 같아야 한다.
