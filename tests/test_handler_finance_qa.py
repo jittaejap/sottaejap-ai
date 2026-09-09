@@ -54,7 +54,7 @@ def test_finance_qa_answers_from_evidence_when_available(fake_llm: FakeLLM) -> N
     assert "예금자보호제도는 1인당 5천만원까지 보호합니다." in instruction
     assert "예금보험공사" in instruction
     assert "투자 권유" in instruction  # 근거가 있어도 투자 권유는 금지된다
-    assert HAEYO_RULE in instruction  # #51 — 878문항 재검토에서 94.1% 반말 확인, 규칙 고정
+    assert HAEYO_RULE in instruction  # #51 — 기존 응답 1,027건 재검토에서 94.1% 반말 확인, 규칙 고정
     # Tool 영수증에는 원본 데이터가 그대로 실리지 않는다 (응답 크기 절약).
     assert response.tool_results[0].data is None
     # 동일 질문 반복 시 답변 표현이 흔들리는 걸 줄이려고 이 Task만 낮은 temperature를 쓴다.

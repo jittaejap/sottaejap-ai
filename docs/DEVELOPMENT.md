@@ -368,7 +368,7 @@ Task 지시문을 새로 쓸 때 `SYSTEM_PROMPT`의 톤 규칙이 지켜질 것�
 
 반말(`고려했어` · `같아`)뿐 아니라 3문장(원칙은 한두 문장)도 함께 깨졌다. INTRO와 같은 조치(지시문 안에 해요체 어미 규칙을 직접 명시)로 고쳤고, 두 곳에서 문구가 갈리지 않도록 `app/agent/prompt.py`의 `HAEYO_RULE` 상수로 합쳤다.
 
-**아직 이 규칙이 없는 자리**: `ANALYSIS_NARRATE`·`FINANCE_QA`(둘 다 서버가 이미 호출 중이고 출력이 사용자에게 직접 감)의 지시문에는 아직 `HAEYO_RULE`이 없다. 지금까지 발견된 사고 둘 다 통합 환경에서야 드러났다 — 실측 전에는 안전하다고 단정하지 않는다.
+**아직 이 규칙이 없는 자리**: `ANALYSIS_NARRATE`(서버가 이미 호출 중이고 출력이 사용자에게 직접 감)의 지시문에는 아직 `HAEYO_RULE`이 없다. `FINANCE_QA`는 아래 세 번째 사례에서 실측·수정됐다. 지금까지 발견된 사고 둘 다 통합 환경에서야 드러났다 — 실측 전에는 안전하다고 단정하지 않는다.
 
 ### 세 번째 사례 — FINANCE_QA (#51)
 
@@ -381,7 +381,7 @@ Task 지시문을 새로 쓸 때 `SYSTEM_PROMPT`의 톤 규칙이 지켜질 것�
 
 예외적 사례가 아니라 **사실상 전면적인 톤 규칙 위반**이었다 — INTRO·ACTION_PLAN과 같은 원인(Task 지시문이 공통 규칙보다 나중에 붙어 이긴다)이 여기서도 그대로 재현됐다.
 
-**조치**: `FINANCIAL_RAG_PROMPT`(근거 있음 경로)와 `NO_EVIDENCE_INSTRUCTION`(근거없음 경로) 양쪽에 `HAEYO_RULE`을 추가했다. `app.rag`가 `app.agent`보다 아래 계층이라(CONTRIBUTING §7) `HAEYO_RULE`을 `FINANCIAL_RAG_PROMPT` 상수 자체에는 넣지 못하고, `finance_qa.py`가 프롬프트를 조립하는 자리에서 이어붙였다.
+**조치**: `FINANCIAL_RAG_PROMPT`(근거 있음 경로)와 `NO_EVIDENCE_INSTRUCTION`(근거없음 경로) 양쪽에 `HAEYO_RULE`을 추가했다. `app.rag`가 `app.agent`보다 아래 계층이라(§7 권장 의존 방향) `HAEYO_RULE`을 `FINANCIAL_RAG_PROMPT` 상수 자체에는 넣지 못하고, `finance_qa.py`가 프롬프트를 조립하는 자리에서 이어붙였다. 근거 있음 경로에서는 "나중에 붙는 쪽이 이긴다"는 이 문서의 원리(§12)에 맞춰 `HAEYO_RULE`을 근거 JSON보다 뒤에 둔다.
 
 | 지표 | After (HAEYO_RULE 추가 후, 8문항 재실측) |
 | --- | --- |

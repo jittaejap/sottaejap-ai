@@ -27,8 +27,8 @@ _FINANCE_QA_TEMPERATURE = 0.2
 # 통하지 않았다 — 모델이 실존하는 외부 기관명·통계를 그대로 답에 넣은 사례가 5/5로
 # 재현됐다. "왜 안 되는지"를 설명하는 대신, 근거 없을 때 낼 수 있는 답변 형식 자체를
 # 좁혀서 부연 설명을 낼 여지를 없앤다.
-# HAEYO_RULE 부재도 실측으로 확인됐다(#51) — 878문항 재검토 결과 답변의 94.1%(문장
-# 기준)가 해요체를 안 지켰다. 공통 SYSTEM_PROMPT의 해요체 규칙보다 이 지시문이
+# HAEYO_RULE 부재도 실측으로 확인됐다(#51) — 기존 실측 응답 1,027건(문장 2,615개)
+# 재검토 결과 94.1%(문장 기준)가 해요체를 안 지켰다. 공통 SYSTEM_PROMPT의 해요체 규칙보다 이 지시문이
 # 나중에 붙어 더 강하게 작용하는 것은 #46·#40과 같은 패턴이라, 규칙을 여기 직접 넣는다.
 NO_EVIDENCE_INSTRUCTION = (
     "참고할 금융 자료를 찾지 못했습니다. 확인할 수 없다는 문장 하나로만 솔직하게 "
@@ -46,8 +46,8 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
     evidence = _evidence(result.data)
 
     instruction = (
-        f"{FINANCIAL_RAG_PROMPT}\n{HAEYO_RULE}\n"
-        f"금융 자료: {json.dumps(evidence, ensure_ascii=False)}"
+        f"{FINANCIAL_RAG_PROMPT}\n"
+        f"금융 자료: {json.dumps(evidence, ensure_ascii=False)}\n{HAEYO_RULE}"
         if evidence
         else NO_EVIDENCE_INSTRUCTION
     )
