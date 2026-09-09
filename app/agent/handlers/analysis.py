@@ -15,6 +15,7 @@
 """
 
 import json
+from datetime import datetime
 from typing import Any
 
 from app.agent.handlers.base import HandlerContext, tool_receipt
@@ -111,6 +112,7 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
     groups: list[Any] = [analysis.get("byVerdict"), analysis.get("byCategory")]
     if transactions:
         groups.append(transactions)
+        groups.append(_transaction_date_numbers(transactions))
     if has_unverified_number(
         sentence,
         known_numbers(groups, year_month=analysis.get("analysisYearMonth")),
@@ -153,6 +155,32 @@ def _matched_category(message: str, by_category: Any) -> str | None:
         if isinstance(category, str) and category and category in message:
             return category
     return None
+
+
+def _transaction_date_numbers(
+    transactions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """`occurredAt`에서 월·일을 뽑아 `number_guard`의 근거 목록에 더한다.
+
+    개별 거래를 근거로 답하면 모델이 "9월 9일에 …" 처럼 날짜를 문장에 그대로
+    쓰는데, 월·일은 금액·비율과 달리 `_prompt_transactions`가 문자열
+    (`occurredAt`) 그대로 남겨서 `number_guard`의 숫자 수집(`known_numbers`)에
+    안 잡힌다 — 그대로 두면 실제 거래 날짜를 언급했을 뿐인데 "근거 밖 수치"로
+    오탐해 정상 답변을 버린다(실측 확인). 날짜를 읽어 온 것이지 계산한 게
+    아니므로 E-18에 걸리지 않는다.
+    """
+
+    numbers: list[dict[str, Any]] = []
+    for item in transactions:
+        occurred_at = item.get("occurredAt")
+        if not isinstance(occurred_at, str):
+            continue
+        try:
+            parsed = datetime.fromisoformat(occurred_at)
+        except ValueError:
+            continue
+        numbers.append({"day": parsed.day, "month": parsed.month})
+    return numbers
 
 
 def _prompt_transactions(data: Any) -> list[dict[str, Any]]:
