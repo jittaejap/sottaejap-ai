@@ -5,6 +5,7 @@ from typing import Any
 
 from app.agent.handlers import HANDLERS, analysis
 from app.agent.handlers.base import HandlerContext
+from app.agent.prompt import HAEYO_RULE
 from app.agent.state import AgentState
 from app.agent.tool_registry import ToolRegistry
 from app.schemas.common import TaskType
@@ -64,6 +65,12 @@ def test_analysis_instruction_pins_the_polite_ending() -> None:
 
     assert '"~요"로 끝나는 해요체' in analysis.ANALYSIS_INSTRUCTION
     assert "반말로 끝내지 않습니다" in analysis.ANALYSIS_INSTRUCTION
+
+
+def test_analysis_instruction_uses_shared_haeyo_rule_constant() -> None:
+    """PR #63 리뷰 — HAEYO_RULE 상수 자체를 참조해, 상수 문구가 바뀌어도 같이 고정된다."""
+
+    assert HAEYO_RULE in analysis.ANALYSIS_INSTRUCTION
 
 
 def test_analysis_answers_from_aggregate(fake_llm: FakeLLM) -> None:
