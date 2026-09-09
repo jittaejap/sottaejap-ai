@@ -157,8 +157,12 @@ def _register(registry: ToolRegistry, data: dict[str, Any]) -> None:
     registry.register(ToolName.ANALYSIS, handler)
 
 
-def test_analysis_falls_back_when_reply_has_unverified_number(fake_llm: FakeLLM) -> None:
-    """근거에 없는 숫자가 나오면 폴백으로 바꾼다 (#48 · E-79 · E-101)."""
+def test_analysis_rejects_unverified_number_without_fallback_flag(fake_llm: FakeLLM) -> None:
+    """근거에 없는 숫자가 나오면 안내문으로 바꾸되 fallback은 세우지 않는다.
+
+    fallback=true의 소비자는 클라이언트고 "AI 장애" 배너를 띄운다(05 §2) — 가드
+    거절은 검증 실패이지 장애가 아니다(01 E-108 · #48 · #50 리뷰 · server #49).
+    """
 
     registry = ToolRegistry()
     _register(registry, _analysis_data())
@@ -168,7 +172,7 @@ def test_analysis_falls_back_when_reply_has_unverified_number(fake_llm: FakeLLM)
     response = asyncio.run(analysis.handle(context))
 
     assert response.reply == analysis.ANALYSIS_UNAVAILABLE_REPLY
-    assert response.fallback is True
+    assert response.fallback is False
 
 
 def test_analysis_allows_known_percent_from_share(fake_llm: FakeLLM) -> None:

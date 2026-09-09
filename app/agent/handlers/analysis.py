@@ -70,9 +70,12 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
         known_numbers(groups, year_month=analysis.get("analysisYearMonth")),
         known_percentages=known_percentages(groups),
     ):
+        # fallback=False다 — ANALYSIS_NARRATE와 달리 이 fallback 소비자는
+        # 클라이언트고, true는 "AI 장애" 템플릿 배너(S11)를 띄운다(05 §2).
+        # 가드 거절은 검증 실패이지 장애가 아니다(01 E-108 · server #49가
+        # 이미 이 혼동으로 비용을 낸 사례).
         return ChatResponse(
             reply=ANALYSIS_UNAVAILABLE_REPLY,
-            fallback=True,
             tool_results=[receipt],
         )
 
