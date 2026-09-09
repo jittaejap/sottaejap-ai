@@ -20,6 +20,8 @@ Agent → FinancialRagTool → FinancialRetriever
 | `MemoryTool` | 저장 방식과 분리된 개인 소비 메모리 조회 |
 | `FinancialRagTool` | Python 내부 금융 RAG 검색 |
 
+앞의 5종은 `build_default_registry()`(`app/agent/tool_registry.py`)가 `app/main.py` lifespan에서 등록한다. `FinancialRagTool`은 `DATABASE_URL`이 있을 때만 lifespan이 덧붙인다. 회고는 조회만 등록하고 저장은 05 §3 v2.2 본문(`transaction_id` 포함)과 맞춘 뒤 배선한다 (#10).
+
 ## Spring API Wrapper 원칙
 
 - Tool은 `httpx`, URL, 인증 Header를 직접 다루지 않는다.
@@ -39,7 +41,7 @@ Baseline, Anomaly Score, Reflection Score, 만족도 보정, 예상 절감액, �
 2. Input/Output Pydantic Schema를 정의한다.
 3. 필요한 `SpringClient` 메서드를 추가한다.
 4. 05 §3에 있는 API 계약만 HTTP 호출로 구현한다.
-5. `ToolRegistry`에 Handler를 등록한다.
+5. `build_default_registry()`에 `ToolRequest`를 Tool 인자로 옮기는 Handler를 등록한다.
 6. Fake Client로 위임 동작을 테스트한다.
 7. 이 문서의 Tool 목록을 갱신한다.
 
