@@ -7,6 +7,7 @@ import pytest
 from app.agent.agent import SingleAgent
 from app.agent.handlers import HANDLERS
 from app.agent.handlers.base import HandlerContext
+from app.agent.reply_length import MAX_REPLY_LENGTH
 from app.schemas.chat import ChatMessage, ChatRequest, ChatResponse
 from app.schemas.common import TaskType
 from tests.conftest import FakeLLM
@@ -149,3 +150,42 @@ def test_agent_falls_back_when_llm_not_configured() -> None:
 
     assert response.fallback is True
     assert response.reply
+
+
+def test_agent_truncates_reply_over_length_cap(fake_llm: FakeLLM) -> None:
+    """client가 reply를 이력에 되돌려 보내므로 2,000자를 넘기지 않는다 (E-110 · #55)."""
+
+    fake_llm.reply = "괜찮아요." * 700  # 3,500자, 해요체 문장 경계 다수 포함
+
+    response = asyncio.run(
+        SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
+            ChatRequest(message="질문")
+        )
+    )
+
+    assert len(response.reply) <= MAX_REPLY_LENGTH
+    assert response.reply.endswith("요.")
+
+
+def test_agent_truncates_handler_reply_over_length_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_llm: FakeLLM,
+) -> None:
+    """Handler 경로도 같은 상한을 받는다 — Task마다 반복 구현하지 않는다."""
+
+    async def handler(context: HandlerContext) -> ChatResponse:
+        return ChatResponse(reply="괜찮아요." * 700)
+
+    monkeypatch.setitem(HANDLERS, TaskType.REFLECTION, handler)
+
+    response = asyncio.run(
+        SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
+            ChatRequest(
+                message="질문",
+                task_context={"task": "REFLECTION", "status": "ACTIVE", "state": {}},
+            )
+        )
+    )
+
+    assert len(response.reply) <= MAX_REPLY_LENGTH
+    assert response.reply.endswith("요.")

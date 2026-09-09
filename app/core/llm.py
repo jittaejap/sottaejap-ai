@@ -19,6 +19,21 @@ from openai import (
 from app.core.config import Settings, get_settings
 
 LLM_RETRY_COUNT = 1
+# `reply`가 client 이력(recentMessages)에 그대로 돌아가는 경로가 있어 2,000자
+# 상한이 걸렸다(server PR #59 · E-110 · #55). 자르는 주체는 반드시 하나여야 한다
+# (`app/agent/reply_length.py`의 `truncate_reply()`) — 이 값이 2,000자보다 먼저
+# 끊으면 그 미완성 문장은 상한 밖(길이 미달)이라 truncate_reply()가 손대지 않고
+# 그대로 나간다(리뷰에서 실측 확인: 1024로는 800~1300자에서 끊김). 그래서 값을
+# 넉넉히 올려 OpenAI가 먼저 자르는 일이 사실상 없게 하고, 실제 길이 결정은
+# truncate_reply() 한 곳만 하게 한다. 여전히 무한 생성을 막는 상한이라는 점은
+# 같다 — 정상 응답(1~2문장)은 이 값에 한참 못 미친다.
+#
+# 인코딩별 여유(한국어 문장 밀도 1.82자/토큰 실측 기준, 리뷰):
+#   o200k_base(gpt-4o-mini, 현재 기본값)  2,000자 = 1,096토큰 -> 3,000토큰 ≈ 5,470자 (2.7배)
+#   cl100k_base(구세대 모델)              2,000자 = 2,002토큰 -> 3,000토큰 ≈ 2,997자 (1.5배)
+# `openai_model`을 cl100k_base 계열로 바꾸면 여유가 1.5배로 좁아진다 — 모델을
+# 바꿀 때 이 값도 같이 재확인한다.
+MAX_REPLY_TOKENS = 3000
 
 
 class LLMNotConfiguredError(RuntimeError):
@@ -65,7 +80,7 @@ class LLMClient:
         TODO: Tool Calling 도입 시 응답 타입과 실행 루프를 확장한다.
         """
 
-        options: dict[str, Any] = {}
+        options: dict[str, Any] = {"max_tokens": MAX_REPLY_TOKENS}
         if temperature is not None:
             options["temperature"] = temperature
         return await self._complete(system_prompt, user_message, **options)
@@ -74,6 +89,12 @@ class LLMClient:
         """결정론적 JSON object 응답을 생성한다.
 
         OpenAI JSON 모드를 사용하려면 프롬프트에 ``JSON`` 단어가 포함되어야 한다.
+
+        `MAX_REPLY_TOKENS`를 여기엔 안 건다 — 이 경로는 client에 그대로 나가는
+        `reply`가 아니라 회고 후보값 추출(`app/reflection/extractor.py`) 같은
+        내부 구조화 응답이라 2,000자 상한(#55) 대상이 아니다. 토큰이 끊겨도
+        JSON 파싱이 깨져 `LLMUnavailableError` → 폴백으로 가므로, 상한을 걸어
+        미리 끊으나 안 걸어 파싱 실패로 끊기나 도착지는 같다.
         """
 
         content = await self._complete(

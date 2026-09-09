@@ -92,6 +92,7 @@ LLM 폴백 규칙 (FR-04-15 · NFR-04):
 - Agent는 `LLMUnavailableError`·`LLMNotConfiguredError`를 잡아 `fallback_reply(task, state)`로 `reply`를 채우고 `fallback=True`로 응답한다. HTTP 200을 유지한다.
 - 템플릿은 `state`에 있는 값(`transaction` · `reason_code` · `step` · `sample_merchants`)만 문장에 넣는다. `CLUSTER_NAMING`은 12자 이내다.
 - 템플릿 문구를 바꾸면 `tests/test_fallback.py`를 같이 고친다. 문구 담당은 오진호다.
+- `reply`는 2,000자(코드 포인트 기준)를 넘지 않는다 — client가 이력(`recentMessages`)에 그대로 되돌려 보내는데 server가 `assistant` 항목에 그 상한을 걸기 때문이다(E-110 · #55). `SingleAgent.run()` 반환 직전 `app/agent/reply_length.py`의 `truncate_reply()`가 Task와 무관하게 한 곳에서 건다.
 
 ## 6. RAG 개발 규칙
 

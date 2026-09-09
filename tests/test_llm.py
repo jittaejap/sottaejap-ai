@@ -8,7 +8,7 @@ import pytest
 from openai import APITimeoutError, BadRequestError
 
 from app.core.config import Settings
-from app.core.llm import LLMClient, LLMNotConfiguredError, LLMUnavailableError
+from app.core.llm import MAX_REPLY_TOKENS, LLMClient, LLMNotConfiguredError, LLMUnavailableError
 
 
 class FakeCompletions:
@@ -65,6 +65,17 @@ def test_generate_returns_text_response() -> None:
     assert result == "텍스트 응답"
     assert "response_format" not in fake.chat.completions.calls[0]
     assert "temperature" not in fake.chat.completions.calls[0]
+
+
+def test_generate_always_caps_max_tokens() -> None:
+    """reply가 client 이력에 그대로 돌아가는 경로가 있어 폭주를 막는다 (#55)."""
+
+    fake = FakeOpenAI(content="텍스트 응답")
+    client = LLMClient(settings=Settings(openai_api_key="k"), client=fake)  # type: ignore[arg-type]
+
+    asyncio.run(client.generate("system", "user"))
+
+    assert fake.chat.completions.calls[0]["max_tokens"] == MAX_REPLY_TOKENS
 
 
 def test_generate_retries_once_then_raises() -> None:

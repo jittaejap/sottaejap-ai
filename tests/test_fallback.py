@@ -1,5 +1,6 @@
 """LLM 폴백 템플릿이 작업·단계별로 문서(05 §3) 규칙을 지키는지 확인한다."""
 
+from app.agent.reply_length import MAX_REPLY_LENGTH
 from app.ai.fallback import (
     ACTION_PLAN_UNAVAILABLE_REPLY,
     ANALYSIS_UNAVAILABLE_REPLY,
@@ -7,7 +8,7 @@ from app.ai.fallback import (
     DEFAULT_REPLY,
     fallback_reply,
 )
-from app.schemas.common import TaskType
+from app.schemas.common import ReflectionStep, TaskType
 
 TRANSACTION = {"merchant": "○○배달", "amount": 12000, "category": "배달", "time_slot": "NIGHT"}
 
@@ -64,3 +65,19 @@ def test_analysis_has_shared_unavailable_reply() -> None:
 
 def test_unknown_task_returns_default() -> None:
     assert fallback_reply(None, {}) == DEFAULT_REPLY
+
+
+def test_all_fallback_replies_are_within_reply_length_cap() -> None:
+    """LLM 폴백은 이미 짧지만, 상한을 계속 지키는지 상수 검사로 고정한다 (#55)."""
+
+    replies = [DEFAULT_REPLY, ACTION_PLAN_UNAVAILABLE_REPLY, ANALYSIS_UNAVAILABLE_REPLY]
+    for task in TaskType:
+        replies.append(fallback_reply(task, {}))
+        replies.append(
+            fallback_reply(task, {"step": "INTRO", "reason_code": "TIMESLOT_OUTLIER", "transaction": TRANSACTION})
+        )
+    for step in ReflectionStep:
+        replies.append(fallback_reply(TaskType.REFLECTION, {"step": step.value}))
+
+    for reply in replies:
+        assert len(reply) <= MAX_REPLY_LENGTH
