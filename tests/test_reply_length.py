@@ -38,6 +38,20 @@ def test_long_reply_without_boundary_in_window_is_hard_cut() -> None:
     assert len(result) == MAX_REPLY_LENGTH
 
 
+def test_boundary_only_in_front_half_is_hard_cut_instead() -> None:
+    """경계가 창 앞쪽에만 있으면 그 경계로 안 자른다 — 대부분을 버리는 게
+
+    하드컷보다 나쁘다 ("짧아요." + 긴 한 문장 → 4자만 남는 사례, 리뷰 반영).
+    """
+
+    reply = "짧아요." + "가" * (MAX_REPLY_LENGTH + 500)
+
+    result = truncate_reply(reply)
+
+    assert len(result) == MAX_REPLY_LENGTH
+    assert result != "짧아요."
+
+
 def test_boundary_accepts_exclamation_question_and_tilde() -> None:
     for mark in ("!", "?", "~"):
         first = "가" * (MAX_REPLY_LENGTH - 102) + f"요{mark}"

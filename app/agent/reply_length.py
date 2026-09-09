@@ -19,8 +19,10 @@ _SENTENCE_BOUNDARY = re.compile(r"(?<=요)[.!?~]")
 def truncate_reply(reply: str, max_length: int = MAX_REPLY_LENGTH) -> str:
     """길이 상한(코드 포인트 기준)을 넘으면 마지막 해요체 문장 경계에서 자른다.
 
-    상한 안에 해요체 문장 경계가 하나도 없으면(극단적으로 긴 한 문장) 경계를
-    찾지 못한 채 그대로 자른다 — 상한을 지키는 쪽이 문장 완결성보다 우선이다.
+    경계가 창 앞쪽 절반 안에만 있으면 그 경계로는 안 자른다 — 뒤 내용 대부분을
+    버리는 게 하드컷보다 나쁘다("짧아요." + 2,500자 한 문장 → 4자만 남는 사례).
+    상한 안에 쓸 만한 경계가 없으면(극단적으로 긴 한 문장) 그대로 하드컷한다 —
+    상한을 지키는 쪽이 문장 완결성보다 우선이다.
     """
 
     if len(reply) <= max_length:
@@ -28,6 +30,6 @@ def truncate_reply(reply: str, max_length: int = MAX_REPLY_LENGTH) -> str:
 
     window = reply[:max_length]
     boundaries = list(_SENTENCE_BOUNDARY.finditer(window))
-    if boundaries:
+    if boundaries and boundaries[-1].end() >= max_length // 2:
         return window[: boundaries[-1].end()]
     return window

@@ -20,11 +20,14 @@ from app.core.config import Settings, get_settings
 
 LLM_RETRY_COUNT = 1
 # `reply`가 client 이력(recentMessages)에 그대로 돌아가는 경로가 있어 2,000자
-# 상한이 걸렸다(server PR #59 · E-110 · #55). 한국어는 토큰:글자가 1:1이 아니라
-# (embedding.py의 800자 청크가 최악 글자당 3토큰까지 나온 사례 참고) 이 값만으로는
-# 2,000자를 보장 못 하지만, 폭주하는 응답을 막는 역할은 한다. 실제 상한은
-# `app/agent/reply_length.py`의 `truncate_reply()`가 생성 뒤에 한 번 더 건다.
-MAX_REPLY_TOKENS = 1024
+# 상한이 걸렸다(server PR #59 · E-110 · #55). 자르는 주체는 반드시 하나여야 한다
+# (`app/agent/reply_length.py`의 `truncate_reply()`) — 이 값이 2,000자보다 먼저
+# 끊으면 그 미완성 문장은 상한 밖(길이 미달)이라 truncate_reply()가 손대지 않고
+# 그대로 나간다(리뷰에서 실측 확인: 1024로는 800~1300자에서 끊김). 그래서 값을
+# 넉넉히 올려 OpenAI가 먼저 자르는 일이 사실상 없게 하고, 실제 길이 결정은
+# truncate_reply() 한 곳만 하게 한다. 여전히 무한 생성을 막는 상한이라는 점은
+# 같다 — 정상 응답(1~2문장)은 이 값에 한참 못 미친다.
+MAX_REPLY_TOKENS = 3000
 
 
 class LLMNotConfiguredError(RuntimeError):
