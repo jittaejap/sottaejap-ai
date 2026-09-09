@@ -19,6 +19,9 @@ DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMENSIONS = 1536
 # OpenAI Embeddings API는 요청 하나당 최대 30만 토큰이다. 800자 Chunk(chunk_text 기본값)가
 # 한국어에서 최악의 경우 글자당 3토큰 가까이 나올 수 있어, 100개씩 나눠 보내 여유를 둔다.
+# 이 값은 chunk_text()의 chunk_size(현재 800자)에 암묵적으로 묶여 있다 — chunk_size를
+# 키우면 배치당 토큰 수가 늘어나 이 계산이 조용히 깨질 수 있으니, chunk_size를 바꿀
+# 때는 이 값도 함께 재계산한다.
 EMBEDDING_BATCH_SIZE = 100
 
 
