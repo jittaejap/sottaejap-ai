@@ -13,9 +13,10 @@ from app.rag.prompt import FINANCIAL_RAG_PROMPT
 from app.schemas.chat import ChatResponse
 from app.schemas.tool import ToolName
 
-# 안전 지시(예시 수치를 실제 값처럼 말하지 않기, 근거 없을 때 부연 설명 금지)를
-# 더 엄격히 따르게 하려고 이 Task만 낮은 값을 쓴다 — 다른 Task의 응답 다양성은
-# 그대로 둔다. 로컬 테스트에서 기본 temperature로는 안전 지시 위반이 반복 재현됐다.
+# 동일 질문을 반복해도 답변 표현이 크게 흔들리던 문제를 줄이려고 이 Task만 낮은
+# 값을 쓴다 — 다른 Task의 응답 다양성은 그대로 둔다. 안전 지시(예시 수치 오용·
+# 근거 없음 부연 설명) 위반 자체에는 로컬 테스트에서 효과가 없었다(오히려 더
+# 일관되게 재현됐다) — docs/DEVELOPMENT.md "알려진 한계" 참고.
 _FINANCE_QA_TEMPERATURE = 0.2
 
 # 근거가 없을 때. 지어내지 말고 모른다고 끝내는 게 FR-12-02의 요구다.
