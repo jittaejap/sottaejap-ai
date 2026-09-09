@@ -8,7 +8,7 @@ LLM 호출은 어느 갈래든 **정확히 1회**다. 공감 문장과 질문을
 질문은 폴백과 공유하는 문구를 쓴다.
 """
 
-import json
+from dataclasses import replace
 from typing import Any
 
 from app.agent.handlers.base import HandlerContext
@@ -47,7 +47,7 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
         # 추출할 것이 없고, 빈 후보를 실으면 Spring이 그것을 "네 항목 모두 되물어라"로
         # 옮겨 담아 인사 화면에 선택지가 쏟아진다. `data`가 없으면 Spring은 사용자가
         # 확인한 값을 그대로 유지한다 (05 §3 · `POST /retrospects/chat`).
-        return ChatResponse(reply=await ctx.generate(_intro_instruction(state)))
+        return ChatResponse(reply=await _intro_context(ctx).generate(INTRO_INSTRUCTION))
 
     turn = await ReflectionExtractor(llm_client=ctx.llm).extract(
         ctx.state.message,
@@ -114,18 +114,23 @@ def _next_step(reflection: ReflectionExtraction) -> ReflectionStep:
     return ReflectionStep.CONFIRM
 
 
-def _intro_instruction(state: dict[str, Any]) -> str:
-    """거래와 선정 이유 문장만 프롬프트에 넣는다 — 이유를 지어내는 길을 막는다 (NFR-02).
+def _intro_context(ctx: HandlerContext) -> HandlerContext:
+    """INTRO 프롬프트에 들어갈 상태 자체를 거래와 선정 이유 문장으로 좁힌다 (NFR-02).
 
-    `reason_code`를 날것으로 넘기지 않고 폴백과 **같은 문장표**로 옮긴다. 코드를
-    모델이 해석하게 두면 폴백일 때와 설명이 달라지고, 근거에 없는 살이 붙는다.
+    `build_system_prompt()`가 `structured_state`를 통째로 붙이므로, 지시문에서만
+    문장표로 옮겨서는 `reason_code`가 그 앞줄에 날것으로 실린다. 좁히려면 상태를
+    갈아끼워야 한다 — 코드를 모델이 해석하게 두면 폴백일 때와 설명이 달라지고,
+    근거에 없는 살이 붙는다.
     """
 
-    intro_context = {
+    state = ctx.state.structured_state
+    intro_state = {
         "transaction": _transaction(state),
         "reason": REASON_SENTENCES.get(_text(state.get("reason_code")), ""),
     }
-    return f"{INTRO_INSTRUCTION}\n거래 정보: {json.dumps(intro_context, ensure_ascii=False)}"
+    return replace(
+        ctx, state=ctx.state.model_copy(update={"structured_state": intro_state})
+    )
 
 
 def _confirmed_values(state: dict[str, Any]) -> dict[str, Any]:

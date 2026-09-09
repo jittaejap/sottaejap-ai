@@ -46,7 +46,14 @@ def _context(
 ) -> HandlerContext:
     recent = [ChatMessage(role="assistant", content=last_question)] if last_question else []
     return HandlerContext(
-        state=AgentState(message=message, structured_state=state, recent_messages=recent),
+        # `task`는 `/chat → SingleAgent` 경로에서 항상 채워진다. 비워 두면
+        # `build_system_prompt()`가 상태를 아예 붙이지 않아 프롬프트 검사가 헛돈다.
+        state=AgentState(
+            message=message,
+            task=TaskType.REFLECTION,
+            structured_state=state,
+            recent_messages=recent,
+        ),
         llm=llm,  # type: ignore[arg-type]
         tools=ToolRegistry(),
     )
@@ -70,6 +77,8 @@ def test_intro_explains_selection_without_extracting() -> None:
     # 선정 이유는 폴백과 같은 문장표에서 온다 — reason_code를 날것으로 넘기지 않는다.
     assert "평소와 다른 시간대의 소비였어요." in llm.prompts[0]
     assert "TIMESLOT_OUTLIER" not in llm.prompts[0]
+    # 좁힌 것은 이유뿐이다 — 거래 단서는 그대로 프롬프트에 남는다 (FR-04-02).
+    assert "○○배달" in llm.prompts[0]
     # 인사에는 후보값을 싣지 않는다 — Spring이 확정값을 그대로 유지한다.
     assert response.tool_results == []
     assert response.needs_clarification is False
