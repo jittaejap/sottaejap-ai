@@ -12,7 +12,14 @@ UNIQUE 제약이 있고(V8), 재적재 전제는 `ON CONFLICT (chunk_id) DO UPDA
 `source`는 문서의 식별자다 — 재적재 삭제 기준이 `source` 컬럼이라, 같은 문서를 다른
 `--source` 값으로 다시 넣으면 새 값으로 저장되고 이전 값의 행은 지워지지 않은 채 남는다.
 한 번 정한 `source`는 그 문서에 계속 같은 값으로 쓴다. `chunk_id`·`source`는 V8에서
-`VARCHAR(255)`라 짧은 식별자를 쓴다.
+`VARCHAR(255)`이고 `chunk_id`는 `source`에 `-<번호>`가 더 붙으므로, `--source`가 받는
+상한은 그 접미사 자리를 뺀 247자다.
+
+그래서 `--source`는 **필수**이고 빈 값도 받지 않는다. 기본값을 파일명으로 두면 빠뜨렸을 때
+오류 없이 파일명으로 들어가고, 그 행은 이후 올바른 값으로 재적재해도 `WHERE source = $1`에
+걸리지 않아 영영 남는다. `--source ""`는 한 발 더 나쁘다 — 빈 `source`로 적재되면 다음 문서를
+빈 값으로 넣을 때 `DELETE ... WHERE source = ''`가 앞 문서를 통째로 지운다.
+쓸 값은 `docs/DEVELOPMENT.md` §6의 문서 ↔ `source` 대응표가 정본이다.
 """
 
 import argparse
@@ -43,6 +50,29 @@ ON CONFLICT (chunk_id) DO UPDATE SET
 """
 
 
+# V8의 `financial_chunks.source`·`chunk_id`가 둘 다 VARCHAR(255)다. `chunk_id`는
+# `f"{source}-{index}"`라 접미사만큼 더 길어지므로, source 상한도 그만큼 짧아야 255자
+# source가 INSERT에서 걸리는 일이 없다. 접미사 자리는 7자리(`-9999999`)까지 잡아 둔다 —
+# 가장 큰 문서가 588 Chunk라 여유가 충분하다.
+_ID_MAX_LENGTH = 255
+_CHUNK_SUFFIX_MAX_LENGTH = len("-9999999")
+_SOURCE_MAX_LENGTH = _ID_MAX_LENGTH - _CHUNK_SUFFIX_MAX_LENGTH
+
+
+def source_identifier(value: str) -> str:
+    """`--source` 값을 다듬고 검증한다 — 빈 값과 `chunk_id`가 넘칠 길이를 거부한다."""
+
+    source = value.strip()
+    if not source:
+        raise argparse.ArgumentTypeError("문서 식별자가 비어 있다")
+    if len(source) > _SOURCE_MAX_LENGTH:
+        raise argparse.ArgumentTypeError(
+            f"문서 식별자는 {_SOURCE_MAX_LENGTH}자 이하여야 한다 "
+            f"(현재 {len(source)}자) — chunk_id의 `-<번호>` 자리를 뺀 값이다"
+        )
+    return source
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="금융 문서를 Chunk·Embedding해 financial_chunks에 적재한다"
@@ -50,7 +80,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("document", type=Path, help="UTF-8 텍스트 문서 경로")
     parser.add_argument(
         "--source",
-        help="문서 식별자 (기본: 파일명). 한 번 정하면 바꾸지 않는다 — 짧게",
+        required=True,
+        type=source_identifier,
+        help="문서 식별자. docs/DEVELOPMENT.md §6 대응표의 값을 쓴다 — 한 번 정하면 바꾸지 않는다",
     )
     parser.add_argument(
         "--dry-run",
@@ -101,8 +133,7 @@ async def ingest(document: Path, source: str, dry_run: bool) -> None:
 
 def main() -> None:
     args = parse_args()
-    source = args.source or args.document.name
-    asyncio.run(ingest(args.document, source, args.dry_run))
+    asyncio.run(ingest(args.document, args.source, args.dry_run))
 
 
 if __name__ == "__main__":

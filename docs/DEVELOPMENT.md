@@ -111,6 +111,104 @@ MVP 흐름은 다음과 같다.
 
 초기 범위에 Hybrid Search, Reranking, Query Expansion, Multi Query, Agentic RAG는 포함하지 않는다. 필요가 검증되면 Retriever 구현을 교체하는 방식으로 확장한다.
 
+### 원본 문서 보관과 재적재
+
+**원본 문서는 저장소에 커밋하지 않는다.** `data/local/`은 `.gitignore`에 있고(`/data/local/`),
+원본은 각자 로컬과 개인 백업(구글드라이브 등)에만 둔다. S3 같은 공유 저장소는 두지 않는다 —
+비용이 아니라 **문서 소스의 라이선스가 아직 미확정(FR-12-04)**이기 때문이다. 배포 경로를 늘리면
+나중에 라이선스가 정해졌을 때 회수해야 할 사본이 늘어난다. 라이선스가 확정되기 전에는
+공유 저장소를 새로 만들지 않는다.
+
+**`financial_chunks`(DB)가 유일한 정본이다.** 원본 파일이 사라져도 DB가 남아 있으면 서비스는
+그대로 돈다. 반대로 DB를 비우면 원본을 다시 받아 아래 절차로 만들어야 한다.
+
+재적재는 문서 하나씩 돌린다. `--dry-run`을 먼저 돌려 Chunk 개수만 확인한다 — OpenAI 호출이
+없어 비용이 들지 않는다.
+
+```bash
+python scripts/ingest_financial_docs.py data/local/<문서>.txt --source <식별자> --dry-run
+python scripts/ingest_financial_docs.py data/local/<문서>.txt --source <식별자>
+```
+
+**`--source`는 한 번 정하면 바꾸지 않는다.** 재적재는 `source` 기준으로 기존 행을 지우고 다시
+넣기 때문에, 같은 문서를 다른 `--source`로 넣으면 옛 값의 행이 지워지지 않은 채 남아 검색
+결과에 중복으로 뜬다. 아래 대응표가 정본이다.
+
+| 문서 (`data/local/`) | `--source` | Chunk | `sha256` 앞 12자리 |
+| --- | --- | ---: | --- |
+| `2026_경제금융용어_800선_본문_공식제거.txt` | `경제금융용어800선` | 588 | `a3e8f609e02b` |
+| `textbook_chapter_01.txt` | `금융교과서-01-금융지표` | 20 | `e4f96df2677c` |
+| `textbook_chapter_02_section_01.txt` | `금융교과서-02-금융상품` | 3 | `a0b211c1c1ae` |
+| `textbook_chapter_03.txt` | `금융교과서-03-저축` | 29 | `5fc288957e18` |
+| `textbook_chapter_04.txt` | `금융교과서-04-금융투자` | 48 | `ab479815d61b` |
+| `textbook_chapter_05_section_04.txt` | `금융교과서-05-투자유의사항` | 6 | `d5c6e36095ee` |
+| `textbook_chapter_11.txt` | `금융교과서-11-소비자보호` | 23 | `3085068cc50e` |
+| `textbook_silyon_ch02_05.txt` | `금융교과서-실전-02~05` | 24 | `137c02a1d2a0` |
+| **합계** | | **741** | |
+
+Chunk 수는 `chunk_text(chunk_size=800, overlap=100)` 기준이다.
+
+**적재 전에 해시를 먼저 대조한다.** 쓰는 OS에 있는 것 하나로 돌린다.
+
+```bash
+sha256sum data/local/*.txt        # Linux (EC2 포함)
+shasum -a 256 data/local/*.txt    # macOS
+```
+
+```powershell
+Get-FileHash -Algorithm SHA256 data\local\*.txt   # Windows PowerShell
+```
+
+Chunk 수만으로는 원본이 바뀐 것을 못 잡는다. `chunk_text`가 순수 문자 수 슬라이싱이라
+길이 변화가 700자(= `chunk_size - overlap`) 경계를 넘지 않으면 개수가 그대로다 — 아래
+예금자보호 한도 수정이 정확히 그런 경우로, 고치기 전후 모두 ch03은 29다. 해시는 그 변화를
+잡는다. 어긋나면 아래 "원문에 손을 댄 곳"을 확인하고 그 수정을 다시 적용한 뒤 적재한다.
+
+**원문에 손을 댄 곳 — 예금자보호 한도.** `textbook_chapter_03.txt`의 예금자보호 한도를
+**5,000만원 → 1억원**으로 고쳐서 적재했다(§3.4 · MMDA 문단, 4곳과 딸린 예시 계산).
+2025-09-01 시행 개정 예금자보호법이 한도를 1억원으로 올렸는데 교과서 원문이 개정 전 값이라,
+그대로 두면 "예금자보호 한도는 얼마인가요?"에 **근거는 있으나 틀린 답**이 나간다. 예시 계산도
+한도에 맞춰 옮겼다(정기예금 1억원 · 4% → 원리금 1억 400만원, 원금 9,600만원 → 이자 384만원 —
+원문의 5,100만원은 4% 계산과 맞지 않아 함께 바로잡았다). **원본을 다시 받아 적재하면 이 수정이
+사라진다** — 재적재 전에 이 문단을 확인한다.
+
+이 밖의 수치는 원문 그대로 둔다. 근거 안에서만 답하는 것이 FR-12-02의 요구이고, 원문이 낡으면
+답도 낡는 것이 설계상 정상 동작이다. 한도만 예외로 둔 것은 그 값이 이 서비스의 대표 질문이고
+개정 사실이 명확하기 때문이다.
+
+**EC2 운영 DB 적재는 사람이 직접 한다.** `db`는 compose에서 포트를 열지 않아 바깥에서 붙을 수
+없다. EC2에 접속해 `ai` 컨테이너 안에서 돌린다 — 이미지에 `scripts/`가 들어 있고 `DATABASE_URL`·
+`OPENAI_API_KEY`도 compose가 넣어 준다.
+
+원본은 로컬에만 있으므로 **EC2로 옮기는 것이 첫 걸음**이다.
+
+```bash
+# 1) 로컬 → EC2 (로컬에서 실행)
+scp -i <키경로>/sottaejap-key.pem data/local/<문서>.txt ubuntu@<EC2_HOST>:/tmp/
+
+# 2) 아래는 EC2에서 실행
+cd ~/apps/sottaejap-server/deploy
+dc() { docker compose --env-file "$HOME/apps/.env" "$@"; }
+
+dc cp /tmp/<문서>.txt ai:/tmp/<문서>.txt
+dc exec ai python scripts/ingest_financial_docs.py /tmp/<문서>.txt --source <식별자> --dry-run
+dc exec ai python scripts/ingest_financial_docs.py /tmp/<문서>.txt --source <식별자>
+
+# 3) 옮긴 파일만 지운다 — /tmp의 다른 .txt를 건드리지 않는다
+dc exec ai rm -f /tmp/<문서>.txt
+rm -f /tmp/<문서>.txt
+```
+
+문서 8개를 모두 적재한 뒤 표의 Chunk 수와 대조한다. 합계가 741이어야 한다.
+
+```bash
+dc exec db psql -U sottaejap -d sottaejap -c \
+  "SELECT source, count(*) FROM financial_chunks GROUP BY source ORDER BY source;"
+```
+
+운영 DB에 쓰고 OpenAI 임베딩 실비(문서 8개 전체 기준 약 0.02~0.03 USD)가 나가는 작업이라,
+실행 전 대상 문서·건수·예상 비용을 팀 채널에 한 줄 공지한다.
+
 ## 7. 코드 규칙
 
 - Python 3.12+ 문법과 type hint를 사용한다.
