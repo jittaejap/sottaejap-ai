@@ -43,8 +43,9 @@ ChatResponse
 - `handlers/base.py`: Handler가 공유하는 LLM·Tool 실행 Context와 응답용 Tool 영수증
 - `handlers/__init__.py`: Task별 Handler를 연결하는 `HANDLERS` 레지스트리
 - `handlers/action_plan.py`: `TaskType.ACTION_PLAN` — 요청된 행동 제안만 선별해 Spring이 계산한 이유를 대화체로 설명한다
-- `handlers/analysis.py`: `TaskType.ANALYSIS` — Spring이 계산한 소비 집계를 근거로 자유 질문에 답하고, 유효 묶음이 없으면 바로 안내한다
+- `handlers/analysis.py`: `TaskType.ANALYSIS` — Spring이 계산한 소비 집계를 근거로 자유 질문에 답한다. `byCategory`가 비면 유효 묶음 0개(`NO_RETROSPECT_REPLY`)와 이번 달 회고만 없음(`NO_MONTH_ACTIVITY_REPLY`)을 나눠 안내하고, 문장 속 숫자가 근거 밖이면 폴백으로 바꾼다
 - `handlers/analysis_narrate.py`: `TaskType.ANALYSIS_NARRATE` — 집계로 '나만의 특징' 한 문장을 만들고, 문장 속 숫자가 근거 밖이면 폴백으로 바꾼다
+- `handlers/number_guard.py`: `analysis.py`·`analysis_narrate.py`가 공유하는 숫자 검증 — 생성된 문장의 숫자가 집계 근거 안에 있는지 대조한다
 - `handlers/cluster_naming.py`: `TaskType.CLUSTER_NAMING` — Spring이 전달한 묶음 정보로 12자 이내 이름을 만든다
 - `handlers/finance_qa.py`: `TaskType.FINANCE_QA` — `FINANCIAL_RAG` Tool로 근거를 찾아 그 안에서만 답하고, 없으면 모른다고 답한다
 - `handlers/reflection.py`: `TaskType.REFLECTION` — `step`에 맞춰 인사 또는 후보값 추출을 하고, 확정값과 병합해 다음 질문을 붙인다
