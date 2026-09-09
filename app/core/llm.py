@@ -50,13 +50,25 @@ class LLMClient:
         else:
             self._client = None
 
-    async def generate(self, system_prompt: str, user_message: str) -> str:
+    async def generate(
+        self,
+        system_prompt: str,
+        user_message: str,
+        temperature: float | None = None,
+    ) -> str:
         """기본 텍스트 응답을 생성한다.
+
+        `temperature`를 안 넘기면 OpenAI 기본값을 그대로 쓴다 — 기존 Task들의
+        응답 다양성을 바꾸지 않기 위함이다. 동일 질문 반복 시 답변 표현이 크게
+        흔들리는 걸 줄이고 싶은 Task만 낮은 값을 넘긴다(예: FINANCE_QA).
 
         TODO: Tool Calling 도입 시 응답 타입과 실행 루프를 확장한다.
         """
 
-        return await self._complete(system_prompt, user_message)
+        options: dict[str, Any] = {}
+        if temperature is not None:
+            options["temperature"] = temperature
+        return await self._complete(system_prompt, user_message, **options)
 
     async def generate_json(self, system_prompt: str, user_message: str) -> dict[str, Any]:
         """결정론적 JSON object 응답을 생성한다.

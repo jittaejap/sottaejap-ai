@@ -30,12 +30,13 @@ class HandlerContext:
     llm: LLMClient
     tools: ToolRegistry
 
-    async def generate(self, instruction: str = "") -> str:
+    async def generate(self, instruction: str = "", temperature: float | None = None) -> str:
         """현재 요청 맥락과 Task별 지시문으로 LLM 응답을 생성한다."""
 
         return await self.llm.generate(
             build_system_prompt(self.state, instruction),
             self.state.message,
+            temperature=temperature,
         )
 
     async def call_tool(

@@ -19,3 +19,10 @@ def test_prompt_loosens_only_document_metadata() -> None:
 
 def test_prompt_forbids_investment_advice() -> None:
     assert "투자 권유" in FINANCIAL_RAG_PROMPT
+
+
+def test_prompt_follows_nfr09_length_rule() -> None:
+    """02 NFR-09 · 01 E-90의 "한두 문장의 한 문단" 규칙과 같은 문구를 써야 한다."""
+
+    assert "한두 문장" in FINANCIAL_RAG_PROMPT
+    assert "세 문장" not in FINANCIAL_RAG_PROMPT

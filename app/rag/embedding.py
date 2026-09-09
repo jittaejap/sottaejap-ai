@@ -17,6 +17,12 @@ DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 # `financial_chunks.embedding`의 vector(N)과 같은 값이어야 한다 (04 §1 · E-85).
 # server V8 마이그레이션 주석이 이 이름을 그대로 지목한다 — 상수명을 바꾸지 않는다.
 EMBEDDING_DIMENSIONS = 1536
+# OpenAI Embeddings API는 요청 하나당 최대 30만 토큰이다. 800자 Chunk(chunk_text 기본값)가
+# 한국어에서 최악의 경우 글자당 3토큰 가까이 나올 수 있어, 100개씩 나눠 보내 여유를 둔다.
+# 이 값은 chunk_text()의 chunk_size(현재 800자)에 암묵적으로 묶여 있다 — chunk_size를
+# 키우면 배치당 토큰 수가 늘어나 이 계산이 조용히 깨질 수 있으니, chunk_size를 바꿀
+# 때는 이 값도 함께 재계산한다.
+EMBEDDING_BATCH_SIZE = 100
 
 
 class FinancialEmbedder:
@@ -45,16 +51,21 @@ class FinancialEmbedder:
         if self._client is None:
             raise LLMNotConfiguredError("OPENAI_API_KEY가 설정되지 않았습니다.")
 
-        try:
-            response = await self._client.embeddings.create(
-                model=self._model,
-                input=texts,
-            )
-        except OpenAIError as exc:
-            raise LLMUnavailableError("임베딩 호출이 실패했습니다.") from exc
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), EMBEDDING_BATCH_SIZE):
+            batch = texts[start : start + EMBEDDING_BATCH_SIZE]
+            try:
+                response = await self._client.embeddings.create(
+                    model=self._model,
+                    input=batch,
+                )
+            except OpenAIError as exc:
+                raise LLMUnavailableError("임베딩 호출이 실패했습니다.") from exc
 
-        # OpenAI는 배치 응답의 data 순서를 계약으로 보장하지 않는다. item.index로
-        # 정렬해 입력 순서와 어긋나지 않게 한다 — 어긋나면 Chunk 본문과 벡터가
-        # 서로 다른 것끼리 짝지어져도 예외 없이 조용히 저장된다.
-        ordered = sorted(response.data, key=lambda item: item.index)
-        return [item.embedding for item in ordered]
+            # OpenAI는 배치 응답의 data 순서를 계약으로 보장하지 않는다. item.index로
+            # 정렬해 입력 순서와 어긋나지 않게 한다 — 어긋나면 Chunk 본문과 벡터가
+            # 서로 다른 것끼리 짝지어져도 예외 없이 조용히 저장된다. item.index는
+            # 이 배치 호출 안에서의 상대 위치라, 배치 결과를 순서대로 이어 붙이면 된다.
+            ordered = sorted(response.data, key=lambda item: item.index)
+            vectors.extend(item.embedding for item in ordered)
+        return vectors

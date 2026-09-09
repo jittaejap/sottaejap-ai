@@ -9,7 +9,7 @@ from openai import APITimeoutError
 
 from app.core.config import Settings
 from app.core.llm import LLMNotConfiguredError, LLMUnavailableError
-from app.rag.embedding import EMBEDDING_DIMENSIONS, FinancialEmbedder
+from app.rag.embedding import EMBEDDING_BATCH_SIZE, EMBEDDING_DIMENSIONS, FinancialEmbedder
 
 
 def test_embedding_dimensions_matches_financial_chunks_column() -> None:
@@ -105,6 +105,41 @@ def test_embed_reorders_response_by_index() -> None:
     result = asyncio.run(embedder.embed(["첫번째", "두번째"]))
 
     assert result == [[1.0, 1.0], [9.0, 9.0]]
+
+
+def test_embed_splits_large_input_into_batches() -> None:
+    """EMBEDDING_BATCH_SIZE를 넘는 입력은 여러 번 나눠 호출한다 (OpenAI 30만 토큰 제한)."""
+
+    class BatchAwareEmbeddings:
+        def __init__(self) -> None:
+            self.calls: list[list[str]] = []
+
+        async def create(self, **kwargs: object) -> object:
+            batch = kwargs["input"]
+            self.calls.append(batch)
+            return SimpleNamespace(
+                data=[
+                    SimpleNamespace(embedding=[float(len(text))], index=index)
+                    for index, text in enumerate(batch)
+                ]
+            )
+
+    class BatchAwareOpenAI:
+        def __init__(self) -> None:
+            self.embeddings = BatchAwareEmbeddings()
+
+    fake = BatchAwareOpenAI()
+    embedder = FinancialEmbedder(
+        settings=Settings(openai_api_key="k"), client=fake  # type: ignore[arg-type]
+    )
+    texts = [f"문서{i}" for i in range(EMBEDDING_BATCH_SIZE + 1)]
+
+    result = asyncio.run(embedder.embed(texts))
+
+    assert len(fake.embeddings.calls) == 2
+    assert len(fake.embeddings.calls[0]) == EMBEDDING_BATCH_SIZE
+    assert len(fake.embeddings.calls[1]) == 1
+    assert result == [[float(len(text))] for text in texts]
 
 
 def test_embed_wraps_api_error() -> None:
