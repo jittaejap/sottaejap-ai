@@ -353,44 +353,6 @@ def test_hybrid_search_still_rejects_result_below_rescue_floor() -> None:
     assert results == []
 
 
-def test_hybrid_search_breaks_rrf_tie_with_bm25_raw_score() -> None:
-    """벡터·BM25가 서로 다른 후보를 1등으로 내 RRF가 동점이면 BM25 원점수로 가른다.
-
-    실측(#78)에서 벡터 전용 1등이 완전히 엉뚱한 결과였고, BM25가 찾은 후보가
-    실제로 더 나은 근거였다 — 이 우선순위를 그대로 코드로 고정한다.
-    """
-
-    rows = [
-        {
-            "chunk_id": "vector-top",
-            "content": "완전히 다른 내용입니다",
-            "source": "출처",
-            "metadata": {},
-            "score": 0.5,  # min_score 이상 — 자체로도 통과 조건은 만족한다
-        },
-        {
-            "chunk_id": "bm25-top",
-            "content": "적금 적금 적금 목돈 마련을 위한 저축 상품",
-            "source": "출처",
-            "metadata": {},
-            "score": 0.3,  # min_score 미만, rescue floor 이상
-        },
-        *_filler_rows(3),
-    ]
-    keyword_index = KeywordIndex.build([(row["chunk_id"], row["content"]) for row in rows])
-
-    results = asyncio.run(
-        FinancialRetriever(
-            FakePool(rows=rows),
-            FakeEmbedder(),
-            settings=Settings(financial_rag_min_score=0.48),
-            keyword_index=keyword_index,
-        ).search("적금이란", top_k=1)
-    )
-
-    assert [r.chunk.chunk_id for r in results] == ["bm25-top"]
-
-
 def test_search_without_keyword_index_uses_vector_only_path() -> None:
     """`keyword_index`를 안 주면 기존 벡터 전용 동작 그대로다(하이브리드는 옵트인)."""
 
@@ -413,3 +375,110 @@ def test_search_without_keyword_index_uses_vector_only_path() -> None:
     )
 
     assert results == []  # 하이브리드가 아니므로 rescue 없이 그대로 하한 미달
+
+
+class HybridFakePool:
+    """`_SEARCH_SQL`(벡터 Top-N)과 `_BY_IDS_SQL`(ID 조회)을 구분하는 테스트용 풀.
+
+    `FakePool`은 어떤 질의에도 같은 행을 돌려주기 때문에 "벡터 후보에는 없고
+    BM25로만 올라온 Chunk" 같은 하이브리드 고유의 상황을 만들 수 없다. 여기서는
+    벡터 순위를 명시적으로 주고, ID 조회는 실제로 요청받은 ID만 돌려준다.
+    """
+
+    def __init__(self, corpus: list[dict[str, Any]], vector_order: list[str]) -> None:
+        self.corpus = {row["chunk_id"]: row for row in corpus}
+        self.vector_order = vector_order
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    async def fetch(self, query: str, *args: Any) -> list[Any]:
+        self.calls.append((query, args))
+        if "ANY(" in query:
+            return [self.corpus[c] for c in args[1] if c in self.corpus]
+        return [self.corpus[c] for c in self.vector_order[: args[1]]]
+
+
+def _chunk(chunk_id: str, content: str, score: float) -> dict[str, Any]:
+    return {
+        "chunk_id": chunk_id,
+        "content": content,
+        "source": "출처",
+        "metadata": {},
+        "score": score,
+    }
+
+
+def _hybrid(pool: HybridFakePool, corpus: list[dict[str, Any]]) -> FinancialRetriever:
+    return FinancialRetriever(
+        pool,
+        FakeEmbedder(),
+        settings=Settings(financial_rag_min_score=0.48),
+        keyword_index=KeywordIndex.build([(r["chunk_id"], r["content"]) for r in corpus]),
+    )
+
+
+def test_hybrid_search_matches_vector_order_when_bm25_matches_nothing() -> None:
+    """BM25가 한 건도 못 맞히면 순위는 벡터 전용과 똑같아야 한다.
+
+    `scores()`는 코퍼스 **전체**를 돌려주므로, 0점 후보를 거르지 않고 상위
+    N개를 자르면 질문 용어가 하나도 없는 Chunk가 후보 목록을 채운다. 그 목록이
+    RRF에 들어가면 **테이블 적재 순서**만으로 순위 가점을 받아, 벡터가 꼴찌로
+    민 Chunk가 1등으로 올라온다(#78 리뷰에서 발견).
+    """
+
+    # 코퍼스 적재 순서는 벡터 순위의 역순이다 — 적재 순서가 새면 순위가 뒤집힌다.
+    corpus = [_chunk(f"c{i}", f"금융 문단 {i} 내용입니다", 0.9 - i * 0.05) for i in range(6)]
+    vector_order = [f"c{i}" for i in reversed(range(6))]
+    pool = HybridFakePool(corpus, vector_order)
+
+    results = asyncio.run(_hybrid(pool, corpus).search("김치찌개는 뭐임", top_k=5))
+
+    assert [r.chunk.chunk_id for r in results] == vector_order[:5]
+
+
+def test_hybrid_search_keeps_vector_results_that_rejected_candidates_would_displace() -> None:
+    """게이트에서 탈락할 BM25 후보가 `top_k` 자리를 먹으면 안 된다.
+
+    후보를 `top_k`로 먼저 자르고 나중에 코사인 게이트를 걸면, 어차피 버려질
+    후보가 자리를 차지해 **벡터 전용이었다면 나왔을 근거**까지 함께 사라진다.
+    """
+
+    passing = [_chunk(f"v{i}", f"금융 상품 설명 문단 {i}", 0.60) for i in range(5)]
+    # BM25로만 올라오지만 코사인이 낮아(0.10) 이중 게이트에서 전부 탈락한다.
+    rescued_out = [_chunk(f"b{i}", "적금 적금 적금 " + f"잡음 {i}", 0.10) for i in range(5)]
+    # BM25Okapi의 IDF는 용어가 코퍼스 절반 이상에 있으면 0 이하로 눌린다 —
+    # "적금"이 소수 문서에만 있도록 무관 문서를 채워야 BM25가 실제로 후보를 낸다.
+    corpus = passing + rescued_out + [_chunk(f"x{i}", f"무관 문단 {i}", 0.05) for i in range(8)]
+    pool = HybridFakePool(corpus, [r["chunk_id"] for r in passing])
+
+    results = asyncio.run(_hybrid(pool, corpus).search("적금이란", top_k=5))
+
+    assert [r.chunk.chunk_id for r in results] == [r["chunk_id"] for r in passing]
+
+
+def test_hybrid_search_breaks_rrf_tie_with_bm25_raw_score() -> None:
+    """벡터·BM25가 서로 다른 후보를 1등으로 내 RRF가 동점이면 BM25 원점수로 가른다.
+
+    실측(#78)에서 벡터 전용 1등이 완전히 엉뚱한 결과였고, BM25가 찾은 후보가
+    실제로 더 나은 근거였다 — 이 우선순위를 그대로 코드로 고정한다.
+    """
+
+    # `vector-top`은 벡터 목록에만, `bm25-top`은 BM25 목록에만 있어 RRF가 동점이다.
+    vector_top = _chunk("vector-top", "완전히 다른 내용입니다", 0.50)
+    bm25_top = _chunk("bm25-top", "적금 적금 적금 목돈 마련을 위한 저축 상품", 0.30)
+    corpus = [vector_top, bm25_top, *[_chunk(f"f{i}", f"무관 {i}", 0.05) for i in range(3)]]
+    pool = HybridFakePool(corpus, ["vector-top", "f0", "f1", "f2"])
+
+    results = asyncio.run(_hybrid(pool, corpus).search("적금이란", top_k=1))
+
+    assert [r.chunk.chunk_id for r in results] == ["bm25-top"]
+
+
+def test_hybrid_search_reuses_vector_rows_instead_of_refetching() -> None:
+    """벡터 질의로 이미 읽은 본문·점수를 ID 조회로 다시 읽지 않는다."""
+
+    corpus = [_chunk(f"v{i}", f"금융 상품 설명 문단 {i}", 0.60) for i in range(5)]
+    pool = HybridFakePool(corpus, [r["chunk_id"] for r in corpus])
+
+    asyncio.run(_hybrid(pool, corpus).search("김치찌개는 뭐임", top_k=5))
+
+    assert [c for c in pool.calls if "ANY(" in c[0]] == []

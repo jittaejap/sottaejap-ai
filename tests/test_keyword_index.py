@@ -63,3 +63,19 @@ def test_build_with_empty_rows_returns_empty_index() -> None:
 
     assert index.scores("아무 질문") == {}
     assert index.rank("아무 질문", top_k=5) == []
+
+
+def test_rank_excludes_chunks_with_zero_score() -> None:
+    """질문 용어가 하나도 없는 Chunk는 `top_k`가 남아도 후보에 넣지 않는다.
+
+    `scores()`는 코퍼스 전체를 돌려주므로 그대로 자르면 매칭이 1건뿐인
+    질문에서도 `top_k`개가 꽉 찬다 — 나머지는 **적재 순서**로 뽑힌 무근거
+    Chunk고, RRF 융합에 들어가면 순위 가점을 받는다(#78 리뷰).
+    """
+
+    index = KeywordIndex.build(
+        [(f"c{i}", f"금융 문단 {i} 내용") for i in range(20)]
+        + [("match", "적금 적금 적금 목돈 마련")]
+    )
+
+    assert index.rank("적금이란", top_k=15) == ["match"]

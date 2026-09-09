@@ -89,7 +89,13 @@ class FinancialRetriever:
         self._keyword_index = keyword_index
 
     async def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        """질문과 관련된 금융 문서 Chunk를 유사도 높은 순으로 반환한다."""
+        """질문과 관련된 금융 문서 Chunk를 관련도 높은 순으로 반환한다.
+
+        벡터 전용 경로는 코사인 유사도 내림차순이고, 하이브리드 경로는 RRF
+        융합 순위 내림차순이다 — 후자는 `SearchResult.score`(코사인)가 단조
+        감소하지 않는다. 정렬 기준을 점수로 되돌리지 말 것: BM25로 살린 근거가
+        코사인만으로는 아래에 깔린다는 게 하이브리드를 넣은 이유다(#78).
+        """
 
         if not query.strip():
             raise ValueError("검색어는 비어 있을 수 없습니다.")
@@ -141,7 +147,7 @@ class FinancialRetriever:
         """벡터·BM25 후보를 RRF로 합친다(#28 후속 — 실측 중 프로토타입).
 
         "적금이란"처럼 벡터 유사도만으로는 임계값 근처에서 갈리던 질문이
-        BM25(형태소 분석 기반 키워드 매칱)로는 뚜렷하게 잡히는 사례가 실측으로
+        BM25(형태소 분석 기반 키워드 매칭)로는 뚜렷하게 잡히는 사례가 실측으로
         확인됐다. 두 순위를 점수 스케일이 다른 채로 그냥 더하지 않고 RRF(순위
         기반)로 합친다 — 코사인(0~1)과 BM25(코퍼스 크기에 따라 스케일이
         다름)를 직접 비교할 필요가 없다. 두 방식이 서로 다른 후보를 1등으로
@@ -151,7 +157,9 @@ class FinancialRetriever:
         용어 일치를 찾은 쪽이 실제로 더 나은 근거였다.
         """
 
-        assert self._keyword_index is not None  # 호출자가 이미 확인했다.
+        keyword_index = self._keyword_index
+        if keyword_index is None:  # 호출자가 이미 확인했다 — assert는 `-O`에서 지워진다.
+            return await self._vector_search(vector, top_k)
 
         try:
             vector_rows = await self._pool.fetch(
@@ -163,38 +171,44 @@ class FinancialRetriever:
             ) from exc
 
         vector_ranked = [row["chunk_id"] for row in vector_rows]
-        bm25_scores = self._keyword_index.scores(query)
-        bm25_ranked = [
-            chunk_id
-            for chunk_id, _ in sorted(
-                bm25_scores.items(), key=lambda kv: kv[1], reverse=True
-            )[:_CANDIDATE_POOL_SIZE]
-        ]
+        bm25_scores = keyword_index.scores(query)
+        # `rank()`가 0점 후보를 걸러 준다 — 안 거르면 질문 용어가 없는 Chunk가
+        # 테이블 순서만으로 후보에 들어와 RRF 가점을 받는다(`rank()` docstring).
+        bm25_ranked = keyword_index.rank(query, _CANDIDATE_POOL_SIZE)
 
         fused: dict[str, float] = {}
         for ranked in (vector_ranked, bm25_ranked):
             for position, chunk_id in enumerate(ranked):
                 fused[chunk_id] = fused.get(chunk_id, 0.0) + 1.0 / (_RRF_K + position + 1)
 
+        # 여기서 `top_k`로 자르지 않는다 — 자르고 나서 아래 이중 게이트를 걸면
+        # 탈락할 후보가 자리를 먹어, 벡터 전용이면 나왔을 근거까지 함께 사라진다.
+        # 게이트를 통과한 것만 세어 `top_k`에서 멈춘다. 후보는 두 목록을 합쳐도
+        # 최대 `2 * _CANDIDATE_POOL_SIZE`개라 훑는 비용은 고정이다.
         ordered_ids = [
             chunk_id
             for chunk_id, _ in sorted(
                 fused.items(),
                 key=lambda kv: (kv[1], bm25_scores.get(kv[0], 0.0)),
                 reverse=True,
-            )[:top_k]
+            )
         ]
         if not ordered_ids:
             return []
 
-        try:
-            rows = await self._pool.fetch(_BY_IDS_SQL, to_vector_literal(vector), ordered_ids)
-        except (asyncpg.PostgresError, asyncpg.InterfaceError, OSError) as exc:
-            raise RetrieverUnavailableError(
-                "금융 문서 저장소에 접근할 수 없습니다."
-            ) from exc
+        # 벡터 후보의 본문·점수는 이미 위에서 읽었다 — BM25로만 올라온 후보만
+        # 추가로 읽는다(대개 몇 건이고, 겹치면 아예 질의하지 않는다).
+        by_id = {row["chunk_id"]: row for row in vector_rows}
+        missing = [chunk_id for chunk_id in ordered_ids if chunk_id not in by_id]
+        if missing:
+            try:
+                rows = await self._pool.fetch(_BY_IDS_SQL, to_vector_literal(vector), missing)
+            except (asyncpg.PostgresError, asyncpg.InterfaceError, OSError) as exc:
+                raise RetrieverUnavailableError(
+                    "금융 문서 저장소에 접근할 수 없습니다."
+                ) from exc
+            by_id.update({row["chunk_id"]: row for row in rows})
 
-        by_id = {row["chunk_id"]: row for row in rows}
         results: list[SearchResult] = []
         for chunk_id in ordered_ids:
             row = by_id.get(chunk_id)
@@ -209,6 +223,8 @@ class FinancialRetriever:
                 cosine >= _HYBRID_RESCUE_COSINE_FLOOR and bm25_scores.get(chunk_id, 0.0) > 0
             ):
                 results.append(_to_result(row))
+                if len(results) == top_k:
+                    break
         return results
 
 
