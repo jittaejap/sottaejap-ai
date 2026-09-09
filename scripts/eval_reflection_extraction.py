@@ -44,12 +44,18 @@ from app.reflection.schemas import ReflectionExtraction  # noqa: E402
 
 _FIELDS = ("purpose", "companion", "satisfaction", "repeat_intention")
 
+# 정본(01 §2 · 02 FR-04-04·05)에 판단 기준이 없어 **기대값을 만들 수 없는** 항목에 쓴다.
+# 재현율에도 과잉추론에도 넣지 않는다. 라벨을 억지로 붙이면 그 라벨이 곧 정의가 되어,
+# 프롬프트가 정본에 없는 해석을 만드는 것과 같은 문제가 채점 쪽에서 되풀이된다 (NFR-02).
+UNJUDGED = "채점하지 않는다"
+
 
 class Case(NamedTuple):
     """평가 문장 하나와 네 항목의 기대값.
 
     ``None``(satisfaction은 ``"UNKNOWN"``)은 **미확정이어야 한다**는 뜻이다. 값이
-    나오면 과잉추론 1건이다. 값을 적은 항목은 재현율 분모에 들어간다.
+    나오면 과잉추론 1건이다. 값을 적은 항목은 재현율 분모에 들어간다. ``UNJUDGED``는
+    정본에 판단 기준이 없어 어느 쪽으로도 채점하지 않는다는 뜻이다.
 
     기대값이 사람마다 갈릴 문장은 세트에 넣지 않았다. 정본(01 §2 · 02 FR-04-04·05)에
     태그 **정의**가 없어서, 애매한 문장에 기대값을 붙이면 그 라벨이 곧 정의가 되어
@@ -79,7 +85,6 @@ _EXTRACTABLE: tuple[Case, ...] = (
     Case("혼자 인터넷 강의를 결제했어요", purpose="자기계발", companion="혼자"),
     Case("치약이랑 세제가 떨어져서 샀어요", purpose="필수품"),
     Case("부모님이랑 마트에서 생필품 장 봤어요", purpose="필수품", companion="가족"),
-    Case("세일한다길래 계획에 없던 걸 홧김에 질렀어요", purpose="충동"),
     Case("다음에도 또 살 것 같아요", repeat_intention=True),
     Case("이건 다신 안 살래요", repeat_intention=False),
     Case("만족했고 다음에도 또 갈 거예요", satisfaction="HIGH", repeat_intention=True),
@@ -106,6 +111,9 @@ _OVER_INFERENCE: tuple[Case, ...] = (
     Case("회사 근처에서 샀어요"),
     # 다짐이지 반복 의향에 대한 답이 아니다.
     Case("앞으로는 좀 줄여야겠어요"),
+    # 후회하는 말도 반복 의향의 답이 아니다. purpose는 채점하지 않는다 —
+    # "계획에 없이 샀다 = 충동"은 정본에 없는 판단 기준이라 기대값을 만들 수 없다.
+    Case("세일한다길래 계획에 없던 걸 홧김에 질렀어요", purpose=UNJUDGED),
     # "모르겠다"를 "기타"로 바꿔 담으면 안 된다 (기타 ≠ 모르겠음).
     Case("잘 모르겠어요"),
     Case("글쎄요, 기억이 잘 안 나요"),
@@ -141,6 +149,9 @@ def grade(case: Case, got: ReflectionExtraction) -> Result:
 
     for field in _FIELDS:
         expected = getattr(case, field)
+        if expected is UNJUDGED:
+            continue
+
         actual = getattr(got, field)
         actual = actual.value if hasattr(actual, "value") else actual
         unset = "UNKNOWN" if field == "satisfaction" else None
@@ -196,8 +207,11 @@ def report(results: list[Result], errors: list[Exception], elapsed: float) -> bo
     hits = sum(result.hits for result in results)
     wanted = sum(result.wanted for result in results)
     over = sum(len(result.over) for result in results)
-    # 미확정이어야 하는 항목 수 = 전체 항목 - 값이 있어야 하는 항목
-    nullable = len(results) * len(_FIELDS) - wanted
+    # 미확정이어야 하는 항목 수 = 전체 항목 - 값이 있어야 하는 항목 - 채점하지 않는 항목
+    unjudged = sum(
+        1 for result in results for field in _FIELDS if getattr(result.case, field) is UNJUDGED
+    )
+    nullable = len(results) * len(_FIELDS) - wanted - unjudged
 
     for result in results:
         if not result.misses and not result.over:
