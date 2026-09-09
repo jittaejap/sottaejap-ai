@@ -98,10 +98,24 @@ def test_purpose_rules_are_for_ties_not_new_definitions() -> None:
     """정본(01 §2 · 02 FR-04-04)에 태그 정의가 없으므로 정의가 아니라 구분 규칙만 쓴다.
 
     "식사란 무엇이다"를 프롬프트가 새로 정하면 근거 없는 해석을 AI가 만드는 것이 된다 (NFR-02).
+
+    헤더에 "둘 이상 걸릴 때"라고 적어도, 발화를 한 태그로 **매핑하는 문장**은 모델에게
+    그대로 판단 기준이 된다. 그래서 헤더 문자열만 보지 않고, 실측이 요구하지 않은 매핑
+    문구가 다시 들어오지 않았는지도 함께 본다 (#44 리뷰).
+
+    남은 두 줄은 **실측에서 실제로 실패가 난 자리**다 (`docs/DEVELOPMENT.md` §11).
+    나머지 세 태그(`휴식·취미` · `자기계발` · `필수품`)는 매핑 문구를 빼고 5회를 다시
+    재도 재현율이 그대로여서 지웠다. "충동"에는 우선순위 문장을 함께 붙였다 — 정본에
+    태그 우선순위가 없어서, `"치약이 떨어져서 계획 없이 샀다"`처럼 다른 목적과 겹칠 때
+    프롬프트가 답을 못 하면 안 되기 때문이다.
     """
 
     assert "목적을 고르는 규칙 (둘 이상 걸릴 때 씁니다)" in PROMPT
     assert "어느 것도 걸리지 않으면 purpose는 null" in PROMPT
+    assert "다른\n  목적도 함께 걸리면 그 목적을 씁니다" in PROMPT
+
+    for definition in ("즐기거나 쉬려고", "배우거나 실력을", "없으면 생활이 안 되는"):
+        assert definition not in PROMPT, f"실측이 요구하지 않은 태그 정의가 들어왔다: {definition}"
 
 
 def test_last_question_rule_is_appended_only_when_present() -> None:
