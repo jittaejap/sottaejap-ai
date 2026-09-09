@@ -19,7 +19,9 @@ ANALYSIS_INSTRUCTION = (
     "아래 소비 분석 집계를 바탕으로 사용자 질문에 답하세요. 집계에 없는 수치나 "
     "판정을 새로 만들지 마세요."
 )
-_PROMPT_FIELDS = ("analysisYearMonth", "byVerdict", "byCategory", "pending")
+# `pending`은 뺀다 — 판정(verdict)이 없는 금액이라, 있으면 모델이 판정된 금액과
+# 섞어 말할 여지가 생긴다 (ANALYSIS_NARRATE의 state 제한과 같은 이유, 05 §3).
+_PROMPT_FIELDS = ("analysisYearMonth", "byVerdict", "byCategory")
 
 
 async def handle(ctx: HandlerContext) -> ChatResponse:

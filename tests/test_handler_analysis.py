@@ -74,7 +74,7 @@ def test_analysis_answers_from_aggregate(fake_llm: FakeLLM) -> None:
     assert '"analysisYearMonth"' in instruction
     assert '"byVerdict"' in instruction
     assert '"byCategory"' in instruction
-    assert '"pending"' in instruction
+    assert '"pending"' not in instruction
     assert '"points"' not in instruction
     assert response.tool_results[0].data is None
 
