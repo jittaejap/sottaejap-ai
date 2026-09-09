@@ -5,6 +5,7 @@ from typing import Any
 
 from app.agent.handlers import HANDLERS, analysis_narrate
 from app.agent.handlers.base import HandlerContext
+from app.agent.prompt import HAEYO_RULE
 from app.agent.state import AgentState
 from app.agent.tool_registry import ToolRegistry
 from app.ai.fallback import fallback_reply
@@ -52,6 +53,12 @@ def _handle(reply: str, state: dict[str, Any] | None = None):
 
 def test_analysis_narrate_is_registered() -> None:
     assert HANDLERS[TaskType.ANALYSIS_NARRATE] is analysis_narrate.handle
+
+
+def test_instruction_requires_haeyo_tone() -> None:
+    """#51·#60 — 실측(합성 시나리오 6개)에서 8문장 중 5개(62.5%) 반말이 확인됐다."""
+
+    assert HAEYO_RULE in analysis_narrate.INSTRUCTION
 
 
 def test_sentence_using_only_known_numbers_passes_through() -> None:
