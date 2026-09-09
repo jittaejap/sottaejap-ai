@@ -35,7 +35,7 @@ HANDLERS에서 Task Handler 조회
 ChatResponse
 ```
 
-`HANDLERS`에는 현재 `TaskType.CLUSTER_NAMING`(#29)과 `TaskType.FINANCE_QA`(#21)가 등록돼 있다. `SingleAgent.run()`은 ACTIVE Task에 등록된 Handler가 있으면 실행하고, 없으면 시스템 프롬프트에 현재 작업과 `state`를 붙여 기존처럼 LLM을 1회 호출한다. COMPLETED Task는 Handler를 실행하지 않는다. `LLMUnavailableError`(6초 초과 · 재시도 1회 실패)나 `LLMNotConfiguredError`(키 없음)는 `SingleAgent.run()` 한 곳에서 `app/ai/fallback.py` 템플릿과 `fallback=True` 응답으로 전환한다. OpenAI Tool Calling 실행 루프와 나머지 Task(REFLECTION·ACTION_PLAN·ANALYSIS·ANALYSIS_NARRATE)의 Handler는 TODO다. 별도 Agent Framework는 필요가 검증되기 전 도입하지 않는다.
+`HANDLERS`에는 현재 `TaskType.REFLECTION`(#34) · `TaskType.CLUSTER_NAMING`(#29) · `TaskType.FINANCE_QA`(#21)가 등록돼 있다. `SingleAgent.run()`은 ACTIVE Task에 등록된 Handler가 있으면 실행하고, 없으면 시스템 프롬프트에 현재 작업과 `state`를 붙여 기존처럼 LLM을 1회 호출한다. COMPLETED Task는 Handler를 실행하지 않는다. `LLMUnavailableError`(6초 초과 · 재시도 1회 실패)나 `LLMNotConfiguredError`(키 없음)는 `SingleAgent.run()` 한 곳에서 `app/ai/fallback.py` 템플릿과 `fallback=True` 응답으로 전환한다. OpenAI Tool Calling 실행 루프와 나머지 Task(ACTION_PLAN·ANALYSIS·ANALYSIS_NARRATE)의 Handler는 TODO다. 별도 Agent Framework는 필요가 검증되기 전 도입하지 않는다.
 
 ## 파일 책임
 

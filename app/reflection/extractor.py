@@ -75,7 +75,7 @@ class ReflectionExtractor:
             text,
         )
         return ReflectionTurn(
-            extraction=validate(_to_extraction(payload)),
+            extraction=validate(to_extraction(payload)),
             ack=_required_ack(payload.get("ack")),
         )
 
@@ -100,8 +100,13 @@ def _tag_list(tag_type: type[Purpose] | type[Companion]) -> str:
     return ", ".join(f'"{tag.value}"' for tag in tag_type)
 
 
-def _to_extraction(payload: dict[str, Any]) -> ReflectionExtraction:
-    """LLM 출력을 표준 태그 DTO로 좁힌다. 목록 밖 값은 None이 된다 (E-20)."""
+def to_extraction(payload: dict[str, Any]) -> ReflectionExtraction:
+    """느슨한 dict를 표준 태그 DTO로 좁힌다. 목록 밖 값은 None이 된다 (E-20).
+
+    LLM 출력과 Spring이 `state.reflection`에 실어 보낸 확정값은 키가 같아서
+    (`purpose` · `companion` · `satisfaction` · `repeat_intention`) 같은 함수로
+    좁힌다. 좁히는 규칙이 두 벌이면 한쪽만 고쳐져 표준 태그 밖 값이 샌다.
+    """
 
     return ReflectionExtraction(
         purpose=normalize_purpose(_optional_text(payload.get("purpose"))),

@@ -26,8 +26,13 @@ def test_agent_returns_llm_reply_without_fallback(fake_llm: FakeLLM) -> None:
 
 
 def test_agent_passes_task_context_and_last_question_to_prompt(
+    monkeypatch: pytest.MonkeyPatch,
     fake_llm: FakeLLM,
 ) -> None:
+    # Handler가 없는 Task의 일반 경로를 본다. REFLECTION은 Handler가 생겼으므로
+    # (A5) 라우팅을 걷어내고 `build_system_prompt` 병합만 확인한다.
+    monkeypatch.delitem(HANDLERS, TaskType.REFLECTION)
+
     asyncio.run(
         SingleAgent(llm_client=fake_llm).run(  # type: ignore[arg-type]
             ChatRequest(
