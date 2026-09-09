@@ -54,7 +54,9 @@ def test_cluster_naming_trims_reply_over_12_chars(fake_llm: FakeLLM) -> None:
     original = "이것은열두글자가넘는이름입니다"
     fake_llm.reply = original
 
-    response = asyncio.run(cluster_naming.handle(_context(fake_llm, {})))
+    response = asyncio.run(
+        cluster_naming.handle(_context(fake_llm, {"cluster_key": "카페|오전|업무|혼자"}))
+    )
 
     assert len(response.reply) <= CLUSTER_NAME_MAX_LENGTH
     assert response.reply == original[:CLUSTER_NAME_MAX_LENGTH]
@@ -75,7 +77,9 @@ def test_cluster_naming_uses_first_line_and_removes_quotes(
 
     for reply in replies:
         fake_llm.reply = reply
-        response = asyncio.run(cluster_naming.handle(_context(fake_llm, {})))
+        response = asyncio.run(
+            cluster_naming.handle(_context(fake_llm, {"cluster_key": "카페|오전|업무|혼자"}))
+        )
 
         assert response.reply == "스벅단골"
 
@@ -89,6 +93,37 @@ def test_cluster_naming_preserves_blank_reply_for_spring_fallback(
     response = asyncio.run(cluster_naming.handle(context))
 
     assert response.reply == ""
+
+
+def test_cluster_naming_skips_llm_when_no_signal(fake_llm: FakeLLM) -> None:
+    """cluster_key·sample_merchants가 둘 다 비면 LLM을 부르지 않고 결정론적 이름을 낸다.
+
+    실제 LLM으로 재현됨: 이 상태에서 LLM을 부르면 "이름만 답하라"는 지시를 어기고
+    SYSTEM_PROMPT few-shot 예시를 본뜬 문장을 냈고, reply[:12]가 그걸 단어 중간에서
+    잘라 "확인된 근거가 없어 지" 같은 조각이 나갔다(5/5 재현).
+    """
+
+    from app.ai.fallback import fallback_reply
+
+    context = _context(fake_llm, {})
+
+    response = asyncio.run(cluster_naming.handle(context))
+
+    assert response.reply == fallback_reply(TaskType.CLUSTER_NAMING, {})
+    assert fake_llm.calls == []
+    assert response.fallback is False
+
+
+def test_cluster_naming_calls_llm_when_only_merchants_present(fake_llm: FakeLLM) -> None:
+    """cluster_key가 비어도 sample_merchants가 있으면 정상적으로 LLM을 부른다."""
+
+    fake_llm.reply = "교촌단골"
+    context = _context(fake_llm, {"sample_merchants": ["교촌치킨"]})
+
+    response = asyncio.run(cluster_naming.handle(context))
+
+    assert response.reply == "교촌단골"
+    assert len(fake_llm.calls) == 1
 
 
 def test_cluster_naming_replaces_malformed_state_with_defaults(

@@ -1,14 +1,23 @@
 """CLUSTER_NAMING — Spring이 만든 소비 묶음에 이름을 붙인다 (05 §3 · FR-05-05).
 
 묶음 계산이나 판정 없이 전달받은 묶음 정보만 사용해 12자 이내 이름 하나를 만든다.
+
+실측으로 확인된 문제: `cluster_key`·`sample_merchants`가 둘 다 비어 있으면(malformed
+state) LLM이 "이름만 답하라"는 지시를 무시하고 SYSTEM_PROMPT의 few-shot 예시("확인된
+근거가 없어…")를 본뜬 문장을 낸다. `reply[:12]`가 그 문장을 단어 중간에서 그대로
+잘라 "확인된 근거가 없어 지" 같은 의미 없는 조각이 나갔다(5회 중 5회 재현). LLM 장애가
+아니라 입력 자체가 없는 경우라 `app/ai/fallback.py`의 `fallback_reply()` 템플릿을
+그대로 재사용해 LLM 호출 자체를 건너뛴다 — ACTION_PLAN의 `NO_MATCHING_SUGGESTION_REPLY`
+와 같은 이유로 `fallback` 플래그는 세우지 않는다(AI 장애가 아니라 정상적인 빈 입력 처리).
 """
 
 import json
 from typing import Any
 
 from app.agent.handlers.base import HandlerContext
-from app.ai.fallback import CLUSTER_NAME_MAX_LENGTH
+from app.ai.fallback import CLUSTER_NAME_MAX_LENGTH, fallback_reply
 from app.schemas.chat import ChatResponse
+from app.schemas.common import TaskType
 
 CLUSTER_NAME_INSTRUCTION = (
     "묶음 키는 카테고리|시간대|목적|동행인 순서입니다. 묶음 키와 가맹점 이름, "
@@ -21,6 +30,12 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
     """전달받은 묶음 정보로 12자 이내 이름을 생성한다."""
 
     cluster_info = _cluster_info(ctx.state.structured_state)
+    if not cluster_info["cluster_key"] and not cluster_info["sample_merchants"]:
+        return ChatResponse(
+            reply=fallback_reply(TaskType.CLUSTER_NAMING, ctx.state.structured_state),
+            tool_results=[],
+        )
+
     instruction = (
         f"{CLUSTER_NAME_INSTRUCTION}\n"
         f"묶음 정보: {json.dumps(cluster_info, ensure_ascii=False)}"
