@@ -7,6 +7,7 @@
 
 from app.agent.handlers import HANDLERS
 from app.agent.handlers.base import HandlerContext
+from app.agent.reply_length import truncate_reply
 from app.agent.state import AgentState
 from app.agent.tool_registry import ToolRegistry
 from app.ai.fallback import fallback_reply
@@ -44,11 +45,15 @@ class SingleAgent:
             ):
                 handler = HANDLERS.get(state.task)
             if handler is not None:
-                return await handler(context)
-            reply = await context.generate()
+                response = await handler(context)
+            else:
+                response = ChatResponse(reply=await context.generate())
         except (LLMNotConfiguredError, LLMUnavailableError):
-            return ChatResponse(
+            response = ChatResponse(
                 reply=fallback_reply(state.task, state.structured_state),
                 fallback=True,
             )
-        return ChatResponse(reply=reply)
+
+        # client가 reply를 그대로 이력(recentMessages)에 되돌려 보낸다 — Task와
+        # 무관하게 여기 한곳에서만 상한을 건다(05 §2 #11·#28 · E-110 · #55).
+        return response.model_copy(update={"reply": truncate_reply(response.reply)})

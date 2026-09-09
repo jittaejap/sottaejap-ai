@@ -19,6 +19,12 @@ from openai import (
 from app.core.config import Settings, get_settings
 
 LLM_RETRY_COUNT = 1
+# `reply`가 client 이력(recentMessages)에 그대로 돌아가는 경로가 있어 2,000자
+# 상한이 걸렸다(server PR #59 · E-110 · #55). 한국어는 토큰:글자가 1:1이 아니라
+# (embedding.py의 800자 청크가 최악 글자당 3토큰까지 나온 사례 참고) 이 값만으로는
+# 2,000자를 보장 못 하지만, 폭주하는 응답을 막는 역할은 한다. 실제 상한은
+# `app/agent/reply_length.py`의 `truncate_reply()`가 생성 뒤에 한 번 더 건다.
+MAX_REPLY_TOKENS = 1024
 
 
 class LLMNotConfiguredError(RuntimeError):
@@ -65,7 +71,7 @@ class LLMClient:
         TODO: Tool Calling 도입 시 응답 타입과 실행 루프를 확장한다.
         """
 
-        options: dict[str, Any] = {}
+        options: dict[str, Any] = {"max_tokens": MAX_REPLY_TOKENS}
         if temperature is not None:
             options["temperature"] = temperature
         return await self._complete(system_prompt, user_message, **options)
