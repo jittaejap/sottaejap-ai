@@ -528,3 +528,44 @@ Task 지시문을 새로 쓸 때 `SYSTEM_PROMPT`의 톤 규칙이 지켜질 것�
 추상적 규칙과 구체적 금지 예시의 효과 차이가 뚜렷하다 — "반말이어도 해요체로"라는 문장은 모델에게 방향만 알려줄 뿐 무엇이 반말인지 구체적으로 못 박지 않아서, 사용자 메시지의 강한 신호를 못 이겼다. 실제 반말 표현("96,000원이야")을 금지 예시로 박아 넣자 효과가 났다.
 
 **조치**: `ANALYSIS_INSTRUCTION`에 3번 문구를 반영했다. 범위 밖 질문 리다이렉트(#66의 다른 절반)는 이 변경과 무관하게 정상 동작한다(3/3 재확인). 100%는 아니므로(13/14), 잔여율은 §12의 FINANCE_QA·ANALYSIS_NARRATE와 같은 성격의 미해결 항목으로 남긴다 — 60문장 이상 표본 재검증은 아직 하지 않았다.
+
+## 15. FINANCE_QA 임베딩 실패가 "AI 전체 장애"로 오분류된 사고 (#65)
+
+server #73 항목 6 실측(2026-09-10)에서 FINANCE_QA가 로컬·운영 둘 다 임베딩 호출 실패(403 `model_not_found`) 때마다 검색 실패가 아니라 전체 장애로 잘못 분류돼 `fallback: true` 템플릿이 나갔다.
+
+**원인**: `app/rag/retriever.py`의 `FinancialRetriever.search()`가 `self._embedder.embed([query])`를 호출하는 지점이, 뒤에 있는 asyncpg 전용 `try/except` **바깥**에 있었다. `embed()`가 던지는 `LLMUnavailableError`가 그대로 위로 새서 `app/agent/handlers/base.py`의 `call_tool()` 흡수 목록(`KeyError · SpringApiError · RetrieverUnavailableError · httpx.HTTPError · ValueError`)에도 안 걸리고, 결국 `SingleAgent.run`의 최상위 `except (LLMNotConfiguredError, LLMUnavailableError)`까지 올라가 검색 실패 하나가 "AI 전체 장애" 취급을 받았다.
+
+여기에 임베딩 클라이언트 자체에도 타임아웃·재시도 정책이 없어(`AsyncOpenAI(api_key=...)`만 넘김) SDK 기본값(read 타임아웃 600초·재시도 2회)이 그대로 적용됐고, `SPRING_TIMEOUT_SECONDS`(10초)도 `ANALYSIS`·`ACTION_PLAN` 최악 경로(10 + LLM 6초 × 2 = 22초)에서 `AI_TIMEOUT_MS`(15초) 예산을 넘긴 상태였다.
+
+**조치** (PR #70): ① `search()`가 `embed()` 호출을 감싸 `LLMUnavailableError`·`LLMNotConfiguredError`를 기존 `RetrieverUnavailableError`로 변환 — `call_tool()`이 흡수해 `ToolResult(success=False)`가 되고 근거없음 경로로 정상적으로 내려간다. ② `FinancialEmbedder`가 `LLMClient`와 같은 정책(`timeout=llm_timeout_seconds` · SDK `max_retries=0` + 자체 1회 재시도, 일시적 오류만 재시도)을 쓰도록 통일 — 대량 배치를 보내는 `scripts/ingest_financial_docs.py`에는 별도로 더 긴 타임아웃(60초)을 분리해 넘긴다. ③ `SPRING_TIMEOUT_SECONDS` 10 → 3초로 낮춰 `3 + 12 = 15`초로 예산을 정확히 맞춘다(여유 없음).
+
+**운영 재실측** (2026-09-10, `api.clearpng.cloud`): `POST /chat/finance`에 근거 있는 질문("적금과 예금의 차이가 뭔가요?", "ETF가 뭔가요?")과 근거없는 질문을 섞어 보낸 결과 전부 `fallback: false`로 정상 응답했다 — 원래 원인이던 OpenAI 프로젝트의 임베딩 모델 접근 권한도 이 사이 별도로 해결됐다. 이 재실측 중 이 이슈와 무관한 별도 결함(§17 · #74)을 새로 발견했다.
+
+## 16. 금융 RAG 유사도 하한 (#28)
+
+`FinancialRetriever.search()`가 유사도 점수 하한 없이 항상 top-K를 반환해, 코퍼스에 관련 없는 청크만 있어도 항상 "근거 있음"으로 잡혔다. PR #27 발견사항 — 실시간 데이터성 질문에 용어 설명 청크의 예시 수치를 실제 답처럼 전달(발견사항 3), 최신성이 다른 여러 문서 중 낡은 정보가 뽑힘(발견사항 2 — 예금자보호 한도 5,000만원 vs 1억원)이 모두 이 지점에서 발생했다.
+
+**실측** (PR #73, 로컬 격리 DB 741개 청크 · 실제 OpenAI 임베딩): 정답형 15문항의 top-1 점수는 0.283~0.708(평균 0.510), 근거없음형 14문항은 0.315~0.509(평균 0.408) — **두 그룹이 0.315~0.509 구간에서 겹쳐 단일 하한으로 완전히 분리되지 않는다.**
+
+**채택값**: `FINANCIAL_RAG_MIN_SCORE = 0.48` — 문제 재현 질문("미국 기준금리 전망이 어때요?", score 0.473)을 거르는 가장 가까운 반올림 값이며, 근거 없는 확답을 줄이는 쪽을 우선한 선택이다. 적용 결과 정답형 10/15 근거 유지·5/15 빈 결과(false negative), 근거없음형 11/14 빈 결과·3/14 근거 잔존.
+
+**예금자보호 한도의 특이 케이스**: 이 질문의 score(0.571)는 임계값을 넘어서 순수 점수 필터로는 걸러지지 않는다 — 배포 코퍼스 자체가 개정 전 금액을 담고 있어서다. 별도로 질문 키워드("예금자보호"+"한도"/"얼마"/"금액"/"까지") 기반 임시 차단 게이트를 추가했다 — 코퍼스를 최신 기준으로 재적재하면 제거해야 하는 **임시 정책**으로 명시해 뒀다.
+
+**알려진 한계**: "복리란 무엇인가요?", "ETF" 등 일부 정답형 질문이 현재 표현에서 하한 미달(false negative)로 걸러진다. `score`가 `None`인 결과도 하한 미달과 동일하게 제거한다.
+
+## 17. FINANCE_QA 근거없음 답변이 SYSTEM_PROMPT few-shot 예시를 베끼는 사고 (#74)
+
+§15의 운영 재실측 중 근거없음형 질문에 답변이 이상하다는 게 드러났다 — 서로 다른 질문 4개(코스피 지수·환율 전망·삼성전자 주가·대출 한도)에 5회(반복 포함) 전부 같은 문장 **틀**로 답했다.
+
+```
+"확인된 근거가 없어 지금은 소비 흐름을 설명하기 어려워요."      (코스피 지수)
+"확인된 근거가 없어 지금은 환율 전망을 설명하기 어려워요."      (환율 전망)
+"확인된 근거가 없어 지금은 삼성전자 주가를 설명하기 어려워요."  (삼성전자 주가)
+"확인된 근거가 없어 지금은 대출 한도를 설명하기 어려워요."      (대출 한도)
+```
+
+**원인**: `app/agent/prompt.py`의 공통 `SYSTEM_PROMPT` 응답 예시 중 하나("확인된 근거가 없어 지금은 소비 흐름을 설명하기 어려워요.")가 원래 ANALYSIS_NARRATE용으로 넣어둔 것인데, FINANCE_QA가 근거없음 상황을 만나면 자기 지시문(`NO_EVIDENCE_INSTRUCTION` — "확인할 수 없다는 문장 하나로만, 부연 설명 절대 금지")을 무시하고 이 예시 문장의 **구조**를 그대로 가져와 주제어만 바꿔 답했다. §13(CLUSTER_NAMING)과 원인이 같다 — 지시문이 있어도 모델이 프롬프트 안 다른 자리(few-shot 예시)에서 문체·형식을 끌어온다.
+
+**조치** (PR #75): §13과 같은 해법 — 근거가 없으면 LLM을 아예 부르지 않고 `app/ai/fallback.py`의 새 상수 `FINANCE_QA_NO_EVIDENCE_REPLY`("확인할 수 있는 금융 자료를 찾지 못했어요. 다른 질문으로 다시 물어봐 주세요.")를 코드로 바로 반환한다. `NO_EVIDENCE_INSTRUCTION` 지시문 자체를 제거했다 — 지시문으로는 few-shot 유출을 못 막았다. `fallback`은 세우지 않는다(장애가 아니라 정상적인 근거없음 처리). LLM을 안 부르므로 투자 권유(FR-12-03·NFR-05) 위반 가능성도 이 경로에서 구조적으로 사라진다.
+
+로컬 검증은 결정론적으로 통과한다(LLM 미호출). **운영 재배포 후 재실측(2026-09-10) — 같은 근거없음형 질문 2건 모두 새 고정 문장(`FINANCE_QA_NO_EVIDENCE_REPLY`)으로 응답, few-shot 유출 재현 없음.**
