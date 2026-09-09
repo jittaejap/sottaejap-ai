@@ -30,8 +30,10 @@ Validate: 미확정 필드와 추가 질문 필요 여부 확인
   ↓
 사용자 검증
   ↓
-ReflectionTool을 통해 Spring에 저장
+Spring이 저장 (`POST /retrospects`)
 ```
+
+저장은 이 모듈도 REFLECTION Handler도 하지 않는다. Handler는 후보값을 `/chat` 응답에 실을 뿐이고, 사용자가 확인한 뒤 클라이언트가 부르는 `POST /retrospects`가 저장한다 (05 §3 · E-18).
 
 ## UNKNOWN 처리
 
@@ -50,5 +52,5 @@ Extractor는 LLM을 **1회만** 부르고 그 한 응답에서 후보값과 공�
 
 LLM 출력을 그대로 믿지 않는다. 표준 태그 목록 밖 문자열은 `normalize_*`가 `None`으로 만들고, Pydantic 검증과 사용자 확인 단계는 그대로 유지한다. `LLMUnavailableError`는 여기서 잡지 않는다 — 폴백 전환은 `SingleAgent.run` 한 곳이 담당한다.
 
-REFLECTION Handler(6단계 대화 진행)는 아직 없다. 지금은 추출기만 있고 `/chat`의 REFLECTION 요청은 일반 `generate()`로 빠진다.
+추출기를 부르는 곳은 `app/agent/handlers/reflection.py`(REFLECTION Handler)다. 그 Handler가 확정값과 병합하고 다음 질문을 붙여 `/chat` 응답을 만든다. `to_extraction()`은 LLM 출력과 Spring 확정값을 **같은 규칙으로** 좁히려고 공개해 둔 함수다 — 좁히는 규칙이 두 벌이면 한쪽만 고쳐져 표준 태그 밖 값이 샌다.
 

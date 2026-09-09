@@ -18,7 +18,7 @@ ACTION_PLAN_UNAVAILABLE_REPLY = (
     "제안 목록에서 예상 절감액을 확인해 주세요."
 )
 
-_REASON_SENTENCES: dict[str, str] = {
+REASON_SENTENCES: dict[str, str] = {
     "TIMESLOT_OUTLIER": "평소와 다른 시간대의 소비였어요.",
     "THRESHOLD_EXCEEDED": "설정하신 기준 금액을 넘은 소비였어요.",
     "REPEATED_LOW_SATISFACTION": "비슷한 소비에서 만족도가 낮았던 적이 있어요.",
@@ -26,7 +26,7 @@ _REASON_SENTENCES: dict[str, str] = {
     "MANUAL_PICK": "직접 추가하신 거래예요.",
 }
 
-_REFLECTION_QUESTIONS: dict[ReflectionStep, str] = {
+REFLECTION_QUESTIONS: dict[ReflectionStep, str] = {
     ReflectionStep.SATISFACTION: "이 소비, 만족하셨나요?",
     ReflectionStep.PURPOSE: "어떤 목적의 소비였나요? 아래에서 골라 주세요.",
     ReflectionStep.COMPANION: "누구와 함께한 소비였나요?",
@@ -60,12 +60,12 @@ def _reflection_reply(state: dict[str, Any]) -> str:
     step = _optional_step(state.get("step"))
     if step is ReflectionStep.INTRO or step is None:
         return _intro(state)
-    return _REFLECTION_QUESTIONS[step]
+    return REFLECTION_QUESTIONS[step]
 
 
 def _intro(state: dict[str, Any]) -> str:
     transaction = state.get("transaction")
-    reason = _REASON_SENTENCES.get(str(state.get("reason_code")), "")
+    reason = REASON_SENTENCES.get(str(state.get("reason_code")), "")
     lead = ""
     closing = "최근 소비 하나를 함께 돌아볼까요?"
     if isinstance(transaction, dict):
