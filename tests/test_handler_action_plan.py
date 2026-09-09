@@ -178,6 +178,56 @@ def test_action_plan_ignores_malformed_suggestions_data(
     assert fake_llm.calls == []
 
 
+def test_action_plan_falls_back_when_reply_has_unverified_number() -> None:
+    """근거 밖 숫자(예: 자체 계산한 비율·연 환산)가 섞이면 폴백으로 바꾼다.
+
+    실제 LLM으로 재현됨: "이거 지키면 몇 % 아껴요?" 같은 후속 질문에 모델이
+    monthlyTotalAmount 대비 expectedSaving 비율을 직접 계산해 "약 30%"라고
+    답했다. 계산은 Spring 소유라 Agent가 만들면 안 된다(AI_DESIGN).
+    """
+
+    from app.ai.fallback import fallback_reply
+
+    fake_llm = FakeLLM(reply="이 제안을 지키면 전체 지출의 약 30%를 절약할 수 있어요.")
+    registry = ToolRegistry()
+
+    async def handler(request: ToolRequest) -> ToolResult:
+        return ToolResult(
+            tool_name=ToolName.ACTION_PLAN,
+            data={"suggestions": [_suggestion(7, "심야 배달")]},
+        )
+
+    registry.register(ToolName.ACTION_PLAN, handler)
+    state = {"suggestion_ids": [7]}
+    context = _context(fake_llm, state, registry)
+
+    response = asyncio.run(action_plan.handle(context))
+
+    assert response.reply == fallback_reply(TaskType.ACTION_PLAN, state)
+    assert response.fallback is True
+
+
+def test_action_plan_does_not_fall_back_for_verified_reply(fake_llm: FakeLLM) -> None:
+    """근거 안에 실제로 있는 숫자는 폴백을 유발하지 않는다."""
+
+    fake_llm = FakeLLM(reply="심야 배달 소비가 96,000원으로 확인돼서 이 제안을 드려요.")
+    registry = ToolRegistry()
+
+    async def handler(request: ToolRequest) -> ToolResult:
+        return ToolResult(
+            tool_name=ToolName.ACTION_PLAN,
+            data={"suggestions": [_suggestion(7, "심야 배달")]},
+        )
+
+    registry.register(ToolName.ACTION_PLAN, handler)
+    context = _context(fake_llm, {"suggestion_ids": [7]}, registry)
+
+    response = asyncio.run(action_plan.handle(context))
+
+    assert response.fallback is False
+    assert response.reply == fake_llm.reply
+
+
 def test_action_plan_instruction_requires_polite_tone() -> None:
     """지시문에서 해요체 규칙이 지워지는 회귀를 막는다 (#40).
 
