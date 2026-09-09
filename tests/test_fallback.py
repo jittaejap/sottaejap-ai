@@ -2,6 +2,7 @@
 
 from app.ai.fallback import (
     ACTION_PLAN_UNAVAILABLE_REPLY,
+    ANALYSIS_UNAVAILABLE_REPLY,
     CLUSTER_NAME_MAX_LENGTH,
     DEFAULT_REPLY,
     fallback_reply,
@@ -55,6 +56,10 @@ def test_finance_qa_has_fixed_unavailable_reply() -> None:
 
 def test_action_plan_has_shared_unavailable_reply() -> None:
     assert fallback_reply(TaskType.ACTION_PLAN, {}) == ACTION_PLAN_UNAVAILABLE_REPLY
+
+
+def test_analysis_has_shared_unavailable_reply() -> None:
+    assert fallback_reply(TaskType.ANALYSIS, {}) == ANALYSIS_UNAVAILABLE_REPLY
 
 
 def test_unknown_task_returns_default() -> None:
