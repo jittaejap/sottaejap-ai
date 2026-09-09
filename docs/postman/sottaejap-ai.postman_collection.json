@@ -1,0 +1,122 @@
+{
+  "info": {
+    "name": "sottaejap-ai",
+    "description": "소때잡 AI 서버(`POST /chat` · `GET /health`) 수동 확인용 컬렉션. 05_API_명세서.md §3의 `task_context.state` 예시를 그대로 옮겼다. `baseUrl`·`internalSecret` 변수만 채우면 로컬 서버(`uvicorn app.main:app`)에 바로 쏠 수 있다.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000" },
+    { "key": "internalSecret", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "GET /health",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "POST /chat — 인증 실패 (401)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"안녕하세요\"\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /chat — REFLECTION (INTRO)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Internal-Secret", "value": "{{internalSecret}}" }
+        ],
+        "url": "{{baseUrl}}/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"회고를 시작할게요\",\n  \"user_id\": \"1\",\n  \"task_context\": {\n    \"task\": \"REFLECTION\",\n    \"status\": \"ACTIVE\",\n    \"state\": {\n      \"transaction\": {\n        \"id\": 1043,\n        \"occurred_at\": \"2026-08-22T23:10:00+09:00\",\n        \"merchant\": \"○○배달\",\n        \"amount\": 12000,\n        \"category\": \"배달\",\n        \"time_slot\": \"NIGHT\"\n      },\n      \"reason_code\": \"TIMESLOT_OUTLIER\",\n      \"reflection\": { \"satisfaction\": \"UNKNOWN\", \"purpose\": null, \"companion\": null, \"repeat_intention\": null },\n      \"step\": \"INTRO\"\n    }\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /chat — ANALYSIS",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Internal-Secret", "value": "{{internalSecret}}" }
+        ],
+        "url": "{{baseUrl}}/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"배달은 왜 조정 대상이에요?\",\n  \"user_id\": \"1\",\n  \"task_context\": {\n    \"task\": \"ANALYSIS\",\n    \"status\": \"ACTIVE\",\n    \"state\": { \"analysis_year_month\": \"2026-08\" }\n  },\n  \"recent_messages\": [\n    { \"role\": \"assistant\", \"content\": \"배달은 대부분 심야에 몰려 있고, 예산의 8%를 쓰면서 만족도는 가장 낮았어요.\" }\n  ]\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /chat — ACTION_PLAN",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Internal-Secret", "value": "{{internalSecret}}" }
+        ],
+        "url": "{{baseUrl}}/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"왜 이 제안을 했나요?\",\n  \"user_id\": \"1\",\n  \"task_context\": {\n    \"task\": \"ACTION_PLAN\",\n    \"status\": \"ACTIVE\",\n    \"state\": { \"suggestion_ids\": [7] }\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /chat — CLUSTER_NAMING",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Internal-Secret", "value": "{{internalSecret}}" }
+        ],
+        "url": "{{baseUrl}}/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"이 소비 이름 지어줘\",\n  \"user_id\": \"1\",\n  \"task_context\": {\n    \"task\": \"CLUSTER_NAMING\",\n    \"status\": \"ACTIVE\",\n    \"state\": {\n      \"cluster_key\": \"배달|NIGHT||\",\n      \"sample_merchants\": [\"○○배달\"],\n      \"tx_count\": 5\n    }\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /chat — ANALYSIS_NARRATE",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Internal-Secret", "value": "{{internalSecret}}" }
+        ],
+        "url": "{{baseUrl}}/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"나만의 특징 알려줘\",\n  \"user_id\": \"1\",\n  \"task_context\": {\n    \"task\": \"ANALYSIS_NARRATE\",\n    \"status\": \"ACTIVE\",\n    \"state\": {\n      \"analysis_year_month\": \"2026-08\",\n      \"by_verdict\": [\n        { \"verdict\": \"SUSTAIN\", \"cluster_count\": 5, \"monthly_total_amount\": 430000, \"share\": 0.36 }\n      ],\n      \"by_category\": [\n        { \"category\": \"배달\", \"dominant_time_slot\": \"NIGHT\", \"avg_amount\": 12000, \"monthly_total_amount\": 96000, \"verdict\": \"ADJUST\" }\n      ]\n    }\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /chat — FINANCE_QA",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Internal-Secret", "value": "{{internalSecret}}" }
+        ],
+        "url": "{{baseUrl}}/chat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"예금자보호 한도가 얼마예요?\",\n  \"user_id\": \"1\",\n  \"task_context\": { \"task\": \"FINANCE_QA\", \"status\": \"ACTIVE\", \"state\": {} }\n}"
+        }
+      }
+    }
+  ]
+}
