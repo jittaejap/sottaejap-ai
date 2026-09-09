@@ -16,6 +16,7 @@ from app.agent.handlers.number_guard import (
     known_numbers,
     known_percentages,
 )
+from app.agent.prompt import HAEYO_RULE
 from app.ai.fallback import ANALYSIS_UNAVAILABLE_REPLY
 from app.schemas.chat import ChatResponse
 from app.schemas.tool import ToolName
@@ -26,9 +27,11 @@ NO_RETROSPECT_REPLY = "아직 돌아본 소비가 없어요. 몇 건만 회고�
 NO_MONTH_ACTIVITY_REPLY = (
     "이번 달 거래는 아직 회고한 게 없어요. 이번 달 거래를 몇 건 회고하면 분석을 보여드릴 수 있어요."
 )
+# 공통 SYSTEM_PROMPT의 해요체 규칙만 믿지 않는다 — Task 지시문이 나중에 붙어
+# 이기므로 여기서도 직접 못박는다 (#40 · #46과 같은 함정, #48 실측 반말 7/7).
 ANALYSIS_INSTRUCTION = (
     "아래 소비 분석 집계를 바탕으로 사용자 질문에 답하세요. 집계에 없는 수치나 "
-    "판정을 새로 만들지 마세요."
+    f"판정을 새로 만들지 마세요. {HAEYO_RULE}"
 )
 # `pending`은 뺀다 — 판정(verdict)이 없는 금액이라, 있으면 모델이 판정된 금액과
 # 섞어 말할 여지가 생긴다 (ANALYSIS_NARRATE의 state 제한과 같은 이유, 05 §3).

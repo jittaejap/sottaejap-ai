@@ -55,6 +55,17 @@ def test_analysis_is_registered() -> None:
     assert HANDLERS[TaskType.ANALYSIS] is analysis.handle
 
 
+def test_analysis_instruction_pins_the_polite_ending() -> None:
+    """ANALYSIS_INSTRUCTION은 해요체 어미를 직접 못박아야 한다 (#48 회귀 방지).
+
+    공통 SYSTEM_PROMPT의 해요체 규칙만 믿었더니 server PR #55로 실제 호출 경로가
+    열린 뒤 실측에서 반말 7/7이 나왔다 (#40 · #46과 같은 함정).
+    """
+
+    assert '"~요"로 끝나는 해요체' in analysis.ANALYSIS_INSTRUCTION
+    assert "반말로 끝내지 않습니다" in analysis.ANALYSIS_INSTRUCTION
+
+
 def test_analysis_answers_from_aggregate(fake_llm: FakeLLM) -> None:
     registry = ToolRegistry()
 
