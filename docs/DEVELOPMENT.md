@@ -114,7 +114,10 @@ MVP 흐름은 다음과 같다.
 ### 원본 문서 보관과 재적재
 
 **원본 문서는 저장소에 커밋하지 않는다.** `data/local/`은 `.gitignore`에 있고(`/data/local/`),
-원본은 각자 로컬과 개인 백업(구글드라이브 등)에만 둔다. S3 같은 공유 저장소는 두지 않는다.
+원본은 각자 로컬과 개인 백업(구글드라이브 등)에만 둔다. S3 같은 공유 저장소는 두지 않는다 —
+비용이 아니라 **문서 소스의 라이선스가 아직 미확정(FR-12-04)**이기 때문이다. 배포 경로를 늘리면
+나중에 라이선스가 정해졌을 때 회수해야 할 사본이 늘어난다. 라이선스가 확정되기 전에는
+공유 저장소를 새로 만들지 않는다.
 
 **`financial_chunks`(DB)가 유일한 정본이다.** 원본 파일이 사라져도 DB가 남아 있으면 서비스는
 그대로 돈다. 반대로 DB를 비우면 원본을 다시 받아 아래 절차로 만들어야 한다.
@@ -131,20 +134,30 @@ python scripts/ingest_financial_docs.py data/local/<문서>.txt --source <식별
 넣기 때문에, 같은 문서를 다른 `--source`로 넣으면 옛 값의 행이 지워지지 않은 채 남아 검색
 결과에 중복으로 뜬다. 아래 대응표가 정본이다.
 
-| 문서 (`data/local/`) | `--source` | Chunk |
-| --- | --- | ---: |
-| `2026_경제금융용어_800선_본문_공식제거.txt` | `경제금융용어800선` | 588 |
-| `textbook_chapter_01.txt` | `금융교과서-01-금융지표` | 20 |
-| `textbook_chapter_02_section_01.txt` | `금융교과서-02-금융상품` | 3 |
-| `textbook_chapter_03.txt` | `금융교과서-03-저축` | 29 |
-| `textbook_chapter_04.txt` | `금융교과서-04-금융투자` | 48 |
-| `textbook_chapter_05_section_04.txt` | `금융교과서-05-투자유의사항` | 6 |
-| `textbook_chapter_11.txt` | `금융교과서-11-소비자보호` | 23 |
-| `textbook_silyon_ch02_05.txt` | `금융교과서-실전-02~05` | 24 |
-| **합계** | | **741** |
+| 문서 (`data/local/`) | `--source` | Chunk | `sha256` 앞 12자리 |
+| --- | --- | ---: | --- |
+| `2026_경제금융용어_800선_본문_공식제거.txt` | `경제금융용어800선` | 588 | `a3e8f609e02b` |
+| `textbook_chapter_01.txt` | `금융교과서-01-금융지표` | 20 | `e4f96df2677c` |
+| `textbook_chapter_02_section_01.txt` | `금융교과서-02-금융상품` | 3 | `a0b211c1c1ae` |
+| `textbook_chapter_03.txt` | `금융교과서-03-저축` | 29 | `5fc288957e18` |
+| `textbook_chapter_04.txt` | `금융교과서-04-금융투자` | 48 | `ab479815d61b` |
+| `textbook_chapter_05_section_04.txt` | `금융교과서-05-투자유의사항` | 6 | `d5c6e36095ee` |
+| `textbook_chapter_11.txt` | `금융교과서-11-소비자보호` | 23 | `3085068cc50e` |
+| `textbook_silyon_ch02_05.txt` | `금융교과서-실전-02~05` | 24 | `137c02a1d2a0` |
+| **합계** | | **741** | |
 
-Chunk 수는 `chunk_text(chunk_size=800, overlap=100)` 기준이다. `--dry-run` 결과가 이 표와
-다르면 원본 파일이 바뀐 것이니 적재 전에 먼저 확인한다.
+Chunk 수는 `chunk_text(chunk_size=800, overlap=100)` 기준이다.
+
+**적재 전에 해시를 먼저 대조한다.**
+
+```bash
+shasum -a 256 data/local/*.txt
+```
+
+Chunk 수만으로는 원본이 바뀐 것을 못 잡는다. `chunk_text`가 순수 문자 수 슬라이싱이라
+길이 변화가 700자(= `chunk_size - overlap`) 경계를 넘지 않으면 개수가 그대로다 — 아래
+예금자보호 한도 수정이 정확히 그런 경우로, 고치기 전후 모두 ch03은 29다. 해시는 그 변화를
+잡는다. 어긋나면 아래 "원문에 손을 댄 곳"을 확인하고 그 수정을 다시 적용한 뒤 적재한다.
 
 **원문에 손을 댄 곳 — 예금자보호 한도.** `textbook_chapter_03.txt`의 예금자보호 한도를
 **5,000만원 → 1억원**으로 고쳐서 적재했다(§3.4 · MMDA 문단, 4곳과 딸린 예시 계산).
@@ -162,12 +175,30 @@ Chunk 수는 `chunk_text(chunk_size=800, overlap=100)` 기준이다. `--dry-run`
 없다. EC2에 접속해 `ai` 컨테이너 안에서 돌린다 — 이미지에 `scripts/`가 들어 있고 `DATABASE_URL`·
 `OPENAI_API_KEY`도 compose가 넣어 준다.
 
+원본은 로컬에만 있으므로 **EC2로 옮기는 것이 첫 걸음**이다.
+
 ```bash
+# 1) 로컬 → EC2 (로컬에서 실행)
+scp -i <키경로>/sottaejap-key.pem data/local/<문서>.txt ubuntu@<EC2_HOST>:/tmp/
+
+# 2) 아래는 EC2에서 실행
 cd ~/apps/sottaejap-server/deploy
 dc() { docker compose --env-file "$HOME/apps/.env" "$@"; }
-dc cp <문서>.txt ai:/tmp/<문서>.txt
+
+dc cp /tmp/<문서>.txt ai:/tmp/<문서>.txt
+dc exec ai python scripts/ingest_financial_docs.py /tmp/<문서>.txt --source <식별자> --dry-run
 dc exec ai python scripts/ingest_financial_docs.py /tmp/<문서>.txt --source <식별자>
-dc exec ai sh -c 'rm -f /tmp/*.txt'   # 원본을 EC2에 남기지 않는다
+
+# 3) 옮긴 파일만 지운다 — /tmp의 다른 .txt를 건드리지 않는다
+dc exec ai rm -f /tmp/<문서>.txt
+rm -f /tmp/<문서>.txt
+```
+
+문서 8개를 모두 적재한 뒤 표의 Chunk 수와 대조한다. 합계가 741이어야 한다.
+
+```bash
+dc exec db psql -U sottaejap -d sottaejap -c \
+  "SELECT source, count(*) FROM financial_chunks GROUP BY source ORDER BY source;"
 ```
 
 운영 DB에 쓰고 OpenAI 임베딩 실비(문서 8개 전체 기준 약 0.02~0.03 USD)가 나가는 작업이라,
