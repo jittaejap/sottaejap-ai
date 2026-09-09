@@ -6,6 +6,7 @@ from typing import Any
 import asyncpg
 import pytest
 
+from app.core.config import Settings
 from app.core.llm import LLMNotConfiguredError, LLMUnavailableError
 from app.rag.retriever import (
     FinancialRetriever,
@@ -64,12 +65,64 @@ def test_search_rejects_invalid_top_k() -> None:
         asyncio.run(FinancialRetriever(FakePool(), FakeEmbedder()).search("질문", top_k=0))
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "예금자보호 한도는 얼마인가요?",
+        "예금은 얼마까지 보호돼요?",
+    ],
+)
+def test_search_suppresses_stale_deposit_protection_limit_evidence(
+    query: str,
+) -> None:
+    pool = FakePool(
+        rows=[
+            {
+                "chunk_id": "stale-limit",
+                "content": "예금자보호 한도는 개정 전 금액입니다.",
+                "source": "출처",
+                "metadata": {},
+                "score": 0.9,
+            }
+        ]
+    )
+    embedder = FakeEmbedder()
+
+    results = asyncio.run(FinancialRetriever(pool, embedder).search(query))
+
+    assert results == []
+    assert embedder.queries == []
+    assert pool.calls == []
+
+
+def test_search_keeps_general_deposit_protection_question() -> None:
+    rows = [
+        {
+            "chunk_id": "deposit-protection-overview",
+            "content": "예금자보호제도의 일반적인 설명",
+            "source": "출처",
+            "metadata": {},
+            "score": 0.9,
+        }
+    ]
+
+    results = asyncio.run(
+        FinancialRetriever(FakePool(rows=rows), FakeEmbedder()).search(
+            "예금자보호제도란 무엇인가요?"
+        )
+    )
+
+    assert [result.chunk.chunk_id for result in results] == [
+        "deposit-protection-overview"
+    ]
+
+
 def test_search_returns_results_from_pool() -> None:
     rows = [
         {
             "chunk_id": "c1",
-            "content": "예금자보호는 5천만원까지입니다.",
-            "source": "예금보험공사",
+            "content": "가산금리는 기준금리에 덧붙이는 금리입니다.",
+            "source": "금융용어집",
             "metadata": {"year": 2026},
             "score": 0.92,
         }
@@ -78,15 +131,91 @@ def test_search_returns_results_from_pool() -> None:
     embedder = FakeEmbedder(vector=[0.5, 0.5])
 
     results = asyncio.run(
-        FinancialRetriever(pool, embedder).search("예금자보호 한도는?", top_k=3)
+        FinancialRetriever(pool, embedder).search("가산금리는?", top_k=3)
     )
 
     assert len(results) == 1
     assert results[0].chunk.chunk_id == "c1"
-    assert results[0].chunk.source == "예금보험공사"
+    assert results[0].chunk.source == "금융용어집"
     assert results[0].score == 0.92
     assert pool.calls[0][1] == (to_vector_literal([0.5, 0.5]), 3)
-    assert embedder.queries == ["예금자보호 한도는?"]
+    assert embedder.queries == ["가산금리는?"]
+
+
+def test_search_filters_results_below_minimum_score() -> None:
+    rows = [
+        {
+            "chunk_id": "c1",
+            "content": "질문과 관련이 충분하지 않은 내용",
+            "source": "출처",
+            "metadata": {},
+            "score": 0.479,
+        }
+    ]
+
+    results = asyncio.run(
+        FinancialRetriever(
+            FakePool(rows=rows),
+            FakeEmbedder(),
+            settings=Settings(financial_rag_min_score=0.48),
+        ).search("질문")
+    )
+
+    assert results == []
+
+
+def test_search_keeps_results_at_or_above_minimum_score() -> None:
+    rows = [
+        {
+            "chunk_id": "at-threshold",
+            "content": "임계값과 같은 점수의 내용",
+            "source": "출처",
+            "metadata": {},
+            "score": 0.48,
+        },
+        {
+            "chunk_id": "above-threshold",
+            "content": "임계값보다 높은 점수의 내용",
+            "source": "출처",
+            "metadata": {},
+            "score": 0.72,
+        },
+    ]
+
+    results = asyncio.run(
+        FinancialRetriever(
+            FakePool(rows=rows),
+            FakeEmbedder(),
+            settings=Settings(financial_rag_min_score=0.48),
+        ).search("질문")
+    )
+
+    assert [result.chunk.chunk_id for result in results] == [
+        "at-threshold",
+        "above-threshold",
+    ]
+
+
+def test_search_filters_result_without_score() -> None:
+    rows = [
+        {
+            "chunk_id": "missing-score",
+            "content": "점수가 없는 내용",
+            "source": "출처",
+            "metadata": {},
+            "score": None,
+        }
+    ]
+
+    results = asyncio.run(
+        FinancialRetriever(
+            FakePool(rows=rows),
+            FakeEmbedder(),
+            settings=Settings(financial_rag_min_score=0.48),
+        ).search("질문")
+    )
+
+    assert results == []
 
 
 def test_search_parses_json_string_metadata() -> None:

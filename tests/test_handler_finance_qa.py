@@ -121,6 +121,31 @@ def test_finance_qa_says_cannot_confirm_without_evidence(fake_llm: FakeLLM) -> N
     assert response.tool_results[0].success is False
 
 
+def test_finance_qa_uses_no_evidence_instruction_for_empty_search_results(
+    fake_llm: FakeLLM,
+) -> None:
+    """검색 하한으로 결과가 비면 근거없음 지시문을 사용한다 (#28)."""
+
+    registry = ToolRegistry()
+
+    async def handler(request: ToolRequest) -> ToolResult:
+        return ToolResult(tool_name=ToolName.FINANCIAL_RAG, data=[])
+
+    registry.register(ToolName.FINANCIAL_RAG, handler)
+    context = HandlerContext(
+        state=AgentState(message="미국 기준금리 전망이 어때요?"),
+        llm=fake_llm,  # type: ignore[arg-type]
+        tools=registry,
+    )
+
+    response = asyncio.run(finance_qa.handle(context))
+
+    instruction = fake_llm.calls[0][0]
+    assert "확인할 수 없다" in instruction
+    assert response.tool_results[0].success is True
+    assert response.fallback is False
+
+
 def test_finance_qa_falls_back_to_no_evidence_reply_when_embedding_unavailable(
     fake_llm: FakeLLM,
 ) -> None:
