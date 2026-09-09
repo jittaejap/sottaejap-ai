@@ -655,7 +655,15 @@ Chunk 합성 코퍼스, CPython 3.12) `ai` 프로세스 RSS:
 §12-3은 "그때 제일 큰 것은 대개 postgres"라고 적고 있다 — 이 변경으로 제일 큰 것이
 `ai`가 될 수 있어 그 전제도 같이 바뀐다.
 
-Docker 이미지는 약 335MB → 648MB로 늘었다(루트 볼륨 24GB 기준 여유 있음).
+Docker 이미지는 약 335MB → 648MB로 늘었다(루트 볼륨 24GB 기준 여유 있음). 증가분의 대부분은
+`kiwipiepy_model`이다 — sdist 88MB, 압축을 풀면 109MB(`cong.mdl` 76MB · `multi.dict` 12MB ·
+`nounchr.mdl` 10MB)다. `load_multi_dict=False`로 껐어도 `multi.dict`는 이미지에 그대로 들어간다
+— 껀 건 상주 메모리지 이미지 크기가 아니다.
+
+이 패키지는 **PyPI에 휠이 하나도 없고 sdist만 있다.** C 소스가 없는 순수 데이터라 컴파일러는
+필요 없지만(`python:3.12-slim`에서 그대로 빌드된다), `--only-binary=:all:`을 쓰는
+CONTRIBUTING §7의 교차 해석 명령이 이것 때문에 실패한다 — lock은 Docker 방법으로만 뽑을 수
+있다. §7에 경고를 달아 뒀다.
 
 ### 기동 시 인덱스 구축 실패는 재기동 전까지 계속된다 — 운영 절차
 

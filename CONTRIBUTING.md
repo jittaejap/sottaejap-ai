@@ -133,7 +133,14 @@ pip install --python-version 3.12 --only-binary=:all: --platform manylinux2014_x
 { head -2 requirements.lock; pip freeze --path /tmp/py312 | sort -f; } > requirements.lock.new && mv requirements.lock.new requirements.lock
 ```
 
-Docker가 떠 있다면 3.12 컨테이너에서 같은 결과를 얻습니다.
+> [!IMPORTANT]
+> **`kiwipiepy`가 들어온 뒤로 위 교차 해석 명령은 실패합니다** (#79). `kiwipiepy_model`이
+> PyPI에 휠을 하나도 올리지 않고 sdist(88MB · 순수 모델 데이터)만 배포해서
+> `--only-binary=:all:`로는 후보가 없습니다 — `ResolutionImpossible`로 끝납니다.
+> 그 패키지만 예외로 두려고 `--no-binary=kiwipiepy_model`을 붙이면, pip가
+> `--platform` · `--python-version`과 함께 쓰는 걸 거부합니다. **아래 Docker 방법을 쓰세요.**
+
+Docker가 떠 있다면 3.12 컨테이너에서 뽑습니다. **지금은 이 방법만 됩니다**(위 참고).
 
 ```bash
 docker run --rm -v "$PWD":/w -w /w python:3.12-slim sh -c "pip install -q -r requirements.txt && pip freeze"
