@@ -38,33 +38,24 @@ def test_system_prompt_few_shot_examples_are_short_haeyo_style() -> None:
 
 
 @pytest.mark.parametrize(
-    ("has_task", "has_last_question", "has_instruction"),
-    list(product([False, True], repeat=3)),
+    ("has_task", "has_instruction"),
+    list(product([False, True], repeat=2)),
 )
 def test_build_system_prompt_context_combinations(
     has_task: bool,
-    has_last_question: bool,
     has_instruction: bool,
 ) -> None:
-    last_question = "누구와 함께했나요?"
     instruction = "JSON object로 응답하세요."
     state = AgentState(
         message="혼자였어",
         task=TaskType.REFLECTION if has_task else None,
         structured_state={"step": "COMPANION"},
-        recent_messages=(
-            [ChatMessage(role="assistant", content=last_question)]
-            if has_last_question
-            else []
-        ),
     )
 
     prompt = build_system_prompt(state, instruction if has_instruction else "")
 
     assert ("현재 작업: REFLECTION" in prompt) is has_task
     assert ('현재 상태(JSON): {"step": "COMPANION"}' in prompt) is has_task
-    last_message_section = f'직전 assistant 발화: "{last_question}"'
-    assert (last_message_section in prompt) is has_last_question
     assert (instruction in prompt) is has_instruction
 
     included_sections = [
@@ -72,7 +63,6 @@ def test_build_system_prompt_context_combinations(
         for condition, section in [
             (has_task, "현재 작업: REFLECTION"),
             (has_task, '현재 상태(JSON): {"step": "COMPANION"}'),
-            (has_last_question, last_message_section),
             (has_instruction, instruction),
         ]
         if condition
@@ -81,8 +71,32 @@ def test_build_system_prompt_context_combinations(
         prompt.index(section) for section in included_sections
     )
 
-    if not any((has_task, has_last_question, has_instruction)):
+    if not any((has_task, has_instruction)):
         assert prompt == SYSTEM_PROMPT
+
+
+def test_build_system_prompt_never_embeds_recent_messages() -> None:
+    """`recent_messages`는 `messages` 배열 자리로 옮겼다 — 시스템 프롬프트 문자열에는
+
+    더 이상 섞이지 않는다 (#80). 한 덩어리 문자열로 섞으면 "사용자가 말한 것"과
+    "내가 말한 것"의 구분이 사라지고, 지시문 뒤 텍스트가 문체 규칙을 밀어내는
+    함정(§12 · §13 · §17)이 하나 더 생긴다.
+    """
+
+    state_with_history = AgentState(
+        message="그럼 한도는요?",
+        recent_messages=[
+            ChatMessage(role="assistant", content="예금자 보호는 5천만원까지예요."),
+            ChatMessage(role="user", content="적금도 해당되나요?"),
+        ],
+    )
+    state_without_history = AgentState(message="그럼 한도는요?")
+
+    assert build_system_prompt(state_with_history) == build_system_prompt(
+        state_without_history
+    )
+    assert "직전 assistant" not in build_system_prompt(state_with_history)
+    assert "5천만원" not in build_system_prompt(state_with_history)
 
 
 def test_build_system_prompt_preserves_existing_task_prompt() -> None:
@@ -95,16 +109,3 @@ def test_build_system_prompt_preserves_existing_task_prompt() -> None:
     assert build_system_prompt(state) == (
         f'{SYSTEM_PROMPT}\n현재 작업: REFLECTION\n현재 상태(JSON): {{"step": "PURPOSE"}}\n'
     )
-
-
-def test_build_system_prompt_separates_multiline_assistant_message() -> None:
-    state = AgentState(
-        message="답변",
-        recent_messages=[
-            ChatMessage(role="assistant", content="첫 줄 질문\n둘째 줄 질문")
-        ],
-    )
-
-    prompt = build_system_prompt(state, "Task별 지시문")
-
-    assert '직전 assistant 발화: "첫 줄 질문 둘째 줄 질문"\nTask별 지시문\n' in prompt

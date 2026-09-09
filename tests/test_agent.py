@@ -26,7 +26,7 @@ def test_agent_returns_llm_reply_without_fallback(fake_llm: FakeLLM) -> None:
     assert response.tool_results == []
 
 
-def test_agent_passes_task_context_and_last_question_to_prompt(
+def test_agent_passes_task_context_to_prompt_and_recent_messages_as_history(
     monkeypatch: pytest.MonkeyPatch,
     fake_llm: FakeLLM,
 ) -> None:
@@ -48,7 +48,11 @@ def test_agent_passes_task_context_and_last_question_to_prompt(
 
     assert "REFLECTION" in fake_llm.prompts[0]
     assert "PURPOSE" in fake_llm.prompts[0]
-    assert '직전 assistant 발화: "이 소비에 만족하셨나요?"' in fake_llm.prompts[0]
+    assert "직전 assistant" not in fake_llm.prompts[0]
+    # `recent_messages`는 프롬프트 문자열이 아니라 `history`(→ OpenAI messages)로 간다 (#80).
+    assert fake_llm.histories[0] == [
+        ChatMessage(role="assistant", content="이 소비에 만족하셨나요?")
+    ]
 
 
 def test_agent_routes_active_task_to_registered_handler(

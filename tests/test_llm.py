@@ -8,7 +8,13 @@ import pytest
 from openai import APITimeoutError, BadRequestError
 
 from app.core.config import Settings
-from app.core.llm import MAX_REPLY_TOKENS, LLMClient, LLMNotConfiguredError, LLMUnavailableError
+from app.core.llm import (
+    MAX_REPLY_TOKENS,
+    LLMClient,
+    LLMNotConfiguredError,
+    LLMUnavailableError,
+)
+from app.schemas.chat import ChatMessage
 
 
 class FakeCompletions:
@@ -131,6 +137,54 @@ def test_generate_without_key_raises_not_configured() -> None:
 
     with pytest.raises(LLMNotConfiguredError):
         asyncio.run(client.generate("system", "user"))
+
+
+def test_generate_without_history_sends_exactly_system_and_user() -> None:
+    """이력이 없으면 배열이 종전과 같은 2건이다 — `generate_json`(추출기) 경로 보호 (#80)."""
+
+    fake = FakeOpenAI(content="텍스트 응답")
+    client = LLMClient(settings=Settings(openai_api_key="k"), client=fake)  # type: ignore[arg-type]
+
+    asyncio.run(client.generate("system", "user"))
+
+    assert fake.chat.completions.calls[0]["messages"] == [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "user"},
+    ]
+
+
+def test_generate_with_history_inserts_it_between_system_and_user() -> None:
+    """`recent_messages`는 role을 보존한 채 `[system, *history, user]` 순서로 실린다 (#80)."""
+
+    fake = FakeOpenAI(content="텍스트 응답")
+    client = LLMClient(settings=Settings(openai_api_key="k"), client=fake)  # type: ignore[arg-type]
+    history = [
+        ChatMessage(role="user", content="배달을 줄이고 싶어요."),
+        ChatMessage(role="assistant", content="알겠어요."),
+    ]
+
+    asyncio.run(client.generate("system", "user", history=history))
+
+    assert fake.chat.completions.calls[0]["messages"] == [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "배달을 줄이고 싶어요."},
+        {"role": "assistant", "content": "알겠어요."},
+        {"role": "user", "content": "user"},
+    ]
+
+
+def test_generate_json_ignores_history_and_keeps_two_message_array() -> None:
+    """추출기(`generate_json`) 경로는 `history` 인자를 안 받으므로 현행 그대로다 (#80)."""
+
+    fake = FakeOpenAI(content='{"purpose": "충동"}')
+    client = LLMClient(settings=Settings(openai_api_key="k"), client=fake)  # type: ignore[arg-type]
+
+    asyncio.run(client.generate_json("system", "user"))
+
+    assert fake.chat.completions.calls[0]["messages"] == [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "user"},
+    ]
 
 
 def test_generate_json_returns_object_with_deterministic_options() -> None:

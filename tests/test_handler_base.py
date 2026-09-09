@@ -10,6 +10,7 @@ from app.agent.state import AgentState
 from app.agent.tool_registry import ToolRegistry
 from app.clients.spring_client import SpringApiError
 from app.rag.retriever import RetrieverUnavailableError
+from app.schemas.chat import ChatMessage
 from app.schemas.tool import ToolName, ToolRequest, ToolResult
 from tests.conftest import FakeLLM
 
@@ -26,6 +27,44 @@ def test_handler_context_generate_uses_prompt_builder(fake_llm: FakeLLM) -> None
     assert result == "LLM 응답"
     assert fake_llm.calls[0][1] == "사용자 메시지"
     assert "Task별 지시문" in fake_llm.calls[0][0]
+
+
+def test_handler_context_generate_forwards_recent_messages_as_history(
+    fake_llm: FakeLLM,
+) -> None:
+    """`recent_messages`가 그대로 `history`로 넘어가는지 확인한다 (#80).
+
+    `build_system_prompt`에 문자열로 섞이면 이 배선이 있어도 LLM이 못 본다 —
+    별도 인자로 넘어가는지를 직접 본다.
+    """
+
+    history = [
+        ChatMessage(role="user", content="배달을 줄이고 싶어요."),
+        ChatMessage(role="assistant", content="알겠어요."),
+    ]
+    context = HandlerContext(
+        state=AgentState(message="아까 뭐라고 했죠?", recent_messages=history),
+        llm=fake_llm,  # type: ignore[arg-type]
+        tools=ToolRegistry(),
+    )
+
+    asyncio.run(context.generate())
+
+    assert fake_llm.histories[0] == history
+
+
+def test_handler_context_generate_forwards_empty_history_when_no_recent_messages(
+    fake_llm: FakeLLM,
+) -> None:
+    context = HandlerContext(
+        state=AgentState(message="사용자 메시지"),
+        llm=fake_llm,  # type: ignore[arg-type]
+        tools=ToolRegistry(),
+    )
+
+    asyncio.run(context.generate())
+
+    assert fake_llm.histories[0] == []
 
 
 def test_handler_context_call_tool_returns_result(fake_llm: FakeLLM) -> None:

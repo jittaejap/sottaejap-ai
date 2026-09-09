@@ -9,6 +9,7 @@ import pytest
 from app.clients.spring_client import SpringClient
 from app.core.config import Settings, get_settings
 from app.core.llm import LLMUnavailableError
+from app.schemas.chat import ChatMessage
 
 TEST_SECRET = "test-shared-secret"
 HttpHandler = Callable[[httpx.Request], httpx.Response]
@@ -28,16 +29,19 @@ class FakeLLM:
         self.prompts: list[str] = []
         self.calls: list[tuple[str, str]] = []
         self.temperatures: list[float | None] = []
+        self.histories: list[list[ChatMessage] | None] = []
 
     async def generate(
         self,
         system_prompt: str,
         user_message: str,
         temperature: float | None = None,
+        history: list[ChatMessage] | None = None,
     ) -> str:
         self.prompts.append(system_prompt)
         self.calls.append((system_prompt, user_message))
         self.temperatures.append(temperature)
+        self.histories.append(history)
         if self.reply is None:
             raise LLMUnavailableError("timeout")
         return self.reply
