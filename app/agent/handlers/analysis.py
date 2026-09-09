@@ -29,7 +29,9 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
 
     result = await ctx.call_tool(ToolName.ANALYSIS, {})
     receipt = tool_receipt(result)
-    if not result.success:
+    if not result.success or not isinstance(result.data, dict):
+        # Tool 실패와 응답 모양이 깨진 경우를 같은 장애로 취급한다 — 둘 다
+        # "대상 없음"이 아니라 "지금 답할 수 없음"이다 (#35와 같은 구분).
         return ChatResponse(
             reply=ANALYSIS_UNAVAILABLE_REPLY,
             tool_results=[receipt],
@@ -52,11 +54,9 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
     )
 
 
-def _prompt_analysis(data: Any) -> dict[str, Any]:
-    """Tool 데이터에서 문장화에 필요한 필드만 안전하게 남긴다."""
+def _prompt_analysis(data: dict[str, Any]) -> dict[str, Any]:
+    """집계 dict에서 문장화에 필요한 필드만 남긴다 (dict 여부는 handle이 먼저 확인)."""
 
-    if not isinstance(data, dict):
-        return {}
     return {field: data[field] for field in _PROMPT_FIELDS if field in data}
 
 

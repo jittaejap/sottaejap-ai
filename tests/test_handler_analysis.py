@@ -106,7 +106,9 @@ def test_analysis_returns_fixed_reply_when_tool_fails(fake_llm: FakeLLM) -> None
     assert response.tool_results[0].data is None
 
 
-def test_analysis_ignores_malformed_data(fake_llm: FakeLLM) -> None:
+def test_analysis_returns_unavailable_reply_when_data_malformed(fake_llm: FakeLLM) -> None:
+    """모양이 깨진 응답은 "대상 없음"이 아니라 장애로 취급한다 (#35와 같은 구분)."""
+
     registry = ToolRegistry()
 
     async def handler(request: ToolRequest) -> ToolResult:
@@ -117,5 +119,5 @@ def test_analysis_ignores_malformed_data(fake_llm: FakeLLM) -> None:
 
     response = asyncio.run(analysis.handle(context))
 
-    assert response.reply == analysis.NO_ANALYSIS_DATA_REPLY
+    assert response.reply == analysis.ANALYSIS_UNAVAILABLE_REPLY
     assert fake_llm.calls == []
