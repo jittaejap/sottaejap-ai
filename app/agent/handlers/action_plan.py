@@ -1,15 +1,28 @@
 """ACTION_PLAN — Spring이 계산한 행동 제안의 이유를 설명한다 (05 §3 · FR-08-01).
 
 제안의 수치나 판정을 만들지 않고 요청된 제안 정보만 대화체로 재구성한다.
+
+숫자 검증은 `app/agent/handlers/number_guard.py`를 쓴다 — `ANALYSIS`·`ANALYSIS_NARRATE`
+(#43·#48)와 공유한다. "제공된 값에 없는 숫자를 새로 만들지 마세요"라는 프롬프트 지시만으로는
+막히지 않는다는 게 실측으로 확인됐다 — "이거 지키면 몇 % 아껴요?", "1년으로 치면요?" 같은
+후속 질문에서 LLM이 직접 비율·연 환산을 계산해 답했다(예: 78,000원을 "전체 지출의 약
+30%"라고 자체 계산, 63,000원을 "12개월 곱하면 756,000원"이라고 자체 계산). 계산은 Spring
+소유라는 원칙(AI_DESIGN)을 어기는 것이라 ANALYSIS_NARRATE와 같은 방식으로 막는다.
 """
 
 import json
 from typing import Any
 
 from app.agent.handlers.base import HandlerContext, tool_receipt
+from app.agent.handlers.number_guard import (
+    has_unverified_number,
+    known_numbers,
+    known_percentages,
+)
 from app.agent.prompt import HAEYO_RULE
-from app.ai.fallback import ACTION_PLAN_UNAVAILABLE_REPLY
+from app.ai.fallback import ACTION_PLAN_UNAVAILABLE_REPLY, fallback_reply
 from app.schemas.chat import ChatResponse
+from app.schemas.common import TaskType
 from app.schemas.tool import ToolName
 
 NO_MATCHING_SUGGESTION_REPLY = (
@@ -63,10 +76,21 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
         f"{ACTION_PLAN_INSTRUCTION}\n"
         f"제안 정보: {json.dumps(matching_suggestions, ensure_ascii=False)}"
     )
-    return ChatResponse(
-        reply=await ctx.generate(instruction),
-        tool_results=[receipt],
-    )
+    sentence = await ctx.generate(instruction)
+
+    groups = [matching_suggestions]
+    if has_unverified_number(
+        sentence,
+        known_numbers(groups),
+        known_percentages=known_percentages(groups),
+    ):
+        return ChatResponse(
+            reply=fallback_reply(TaskType.ACTION_PLAN, ctx.state.structured_state),
+            tool_results=[receipt],
+            fallback=True,
+        )
+
+    return ChatResponse(reply=sentence, tool_results=[receipt])
 
 
 def _suggestion_ids(state: dict[str, Any]) -> set[int]:
