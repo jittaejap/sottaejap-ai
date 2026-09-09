@@ -42,6 +42,7 @@ Spring API
 - 경로 6종은 05 §3 표와 1:1이다. 새 경로가 필요하면 문서를 먼저 고치고 메서드를 추가한다.
 - Client 수명주기를 관리하고 테스트에서는 `httpx.MockTransport` 또는 Fake Client를 사용한다.
 - 인증은 `X-Internal-Secret` 헤더 하나이고 Client 생성 시 한 번 붙인다. Tool별로 복제하지 않는다.
+- `/chat` 수동 확인: `docs/postman/sottaejap-ai.postman_collection.json` (컬렉션 변수 `baseUrl` · `internalSecret`)
 
 ## 4. Reflection 개발 규칙
 
