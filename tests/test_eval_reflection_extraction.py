@@ -11,7 +11,7 @@
 import pytest
 
 from app.reflection.schemas import ReflectionExtraction, Satisfaction
-from scripts.eval_reflection_extraction import Case, grade, parse_args, report
+from scripts.eval_reflection_extraction import UNJUDGED, Case, grade, parse_args, report
 
 NOTHING = ReflectionExtraction()
 
@@ -79,3 +79,30 @@ def test_repeat_must_run_at_least_once() -> None:
     assert parse_args(["--repeat", "3"]).repeat == 3
     with pytest.raises(SystemExit):
         parse_args(["--repeat", "0"])
+
+
+def test_unjudged_fields_are_scored_on_neither_axis() -> None:
+    """`UNJUDGED` 항목은 재현율에도 과잉추론에도, 그 분모에도 들어가지 않는다.
+
+    정본에 판단 기준이 없는 라벨을 기대값으로 적으면 그 라벨이 곧 정의가 된다. 이 분기가
+    느슨해지면 그런 라벨이 다시 평가 기준으로 들어오거나, 반대로 채점에서 뺀 항목이
+    과잉추론으로 집계된다 (#44 리뷰 2번).
+    """
+
+    case = Case("세일한다길래 계획에 없던 걸 홧김에 질렀어요", purpose=UNJUDGED)
+
+    result = grade(case, ReflectionExtraction(purpose="충동"))
+
+    assert (result.hits, result.wanted) == (0, 0)
+    assert not result.misses and not result.over
+
+
+def test_report_drops_unjudged_fields_from_the_over_inference_denominator(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """네 항목 중 하나가 `UNJUDGED`면 과잉추론 분모는 3이다."""
+
+    case = Case("세일한다길래 계획에 없던 걸 홧김에 질렀어요", purpose=UNJUDGED)
+
+    assert report([grade(case, ReflectionExtraction(purpose="충동"))], [], 0.0) is True
+    assert "과잉추론     0/3 항목" in capsys.readouterr().out
