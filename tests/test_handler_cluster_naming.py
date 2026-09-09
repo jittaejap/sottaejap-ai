@@ -63,11 +63,18 @@ def test_cluster_naming_trims_reply_over_12_chars(fake_llm: FakeLLM) -> None:
 def test_cluster_naming_uses_first_line_and_removes_quotes(
     fake_llm: FakeLLM,
 ) -> None:
-    fake_llm.reply = '  “스벅단골”\n이 이름을 추천합니다.  '
+    replies = (
+        '  “스벅단골”\n이 이름을 추천합니다.  ',
+        "스벅단골\r\n이 이름을 추천합니다.",
+        "‘스벅단골’",
+        "「스벅단골」",
+    )
 
-    response = asyncio.run(cluster_naming.handle(_context(fake_llm, {})))
+    for reply in replies:
+        fake_llm.reply = reply
+        response = asyncio.run(cluster_naming.handle(_context(fake_llm, {})))
 
-    assert response.reply == "스벅단골"
+        assert response.reply == "스벅단골"
 
 
 def test_cluster_naming_preserves_blank_reply_for_spring_fallback(
