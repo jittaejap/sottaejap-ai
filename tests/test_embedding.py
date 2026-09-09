@@ -188,8 +188,9 @@ def test_embed_retries_once_on_timeout_then_succeeds() -> None:
 def test_embed_does_not_retry_permanent_error() -> None:
     """403 `model_not_found` 같은 영구 오류는 재시도 없이 바로 실패해야 한다(#65).
 
-    운영 실측(이슈 #65)에서 이 구분이 없어 SDK 기본 재시도가 걸려 2.8초까지
-    응답이 늘어졌다 — 재시도해도 결과는 똑같이 실패였다.
+    SDK도 이런 오류는 원래 재시도하지 않지만(408·409·429·5xx·연결 오류만
+    재시도), `_create_batch()`가 그 구분을 SDK 재시도 설정에만 기대지 않고
+    직접 명시하는지 확인한다(PR #70 리뷰).
     """
     from openai import PermissionDeniedError
 

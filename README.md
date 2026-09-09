@@ -131,7 +131,7 @@ LangGraph, CrewAI 같은 Agent Framework나 복잡한 RAG Framework는 초기 �
 | `OPENAI_MODEL` | 아니요 | 공통 LLM 모델 | `gpt-4o-mini` |
 | `LLM_TIMEOUT_SECONDS` | 아니요 | LLM 1회 호출 타임아웃(초). 초과 시 1회 재시도 후 템플릿 (NFR-04) | `6` |
 | `SPRING_BASE_URL` | Spring 연동 시 | Spring 서비스 Base URL | `http://localhost:8080` |
-| `SPRING_TIMEOUT_SECONDS` | 아니요 | AI → Spring 내부 API Timeout(초) | `10` |
+| `SPRING_TIMEOUT_SECONDS` | 아니요 | AI → Spring 내부 API Timeout(초) | `3` |
 | `INTERNAL_SHARED_SECRET` | **예** | `X-Internal-Secret` 공유 시크릿. `sottaejap-server`의 `AI_SHARED_SECRET`과 같은 값. **비어 있으면 `/chat`이 전부 401** | 없음 |
 | `DATABASE_URL` | RAG 연결 후 | PostgreSQL/pgvector 연결 문자열 | 없음 |
 | `AI_SERVER_HOST` | 아니요 | Uvicorn 바인딩 Host | `0.0.0.0` |

@@ -50,9 +50,11 @@ class FinancialEmbedder:
         elif resolved.openai_api_key:
             # LLMClient(core/llm.py)와 같은 정책 — SDK 자체 재시도를 끄고
             # 아래 _create_batch()에서 정확히 1회만 재시도한다(#65). 이전에는
-            # 타임아웃·재시도를 안 넘겨 SDK 기본값(타임아웃 매우 김 · 재시도 2회)이
-            # 그대로 적용돼, 영구 오류(403 model_not_found)에도 불필요하게
-            # 재시도하며 응답이 수 초씩 늘어졌다.
+            # 타임아웃·재시도를 안 넘겨 SDK 기본값(read 타임아웃 600초 · 일시적
+            # 오류 재시도 2회)이 그대로 적용됐다. SDK는 408·409·429·5xx·연결
+            # 오류만 재시도하고 403(`model_not_found`)은 원래도 재시도 대상이
+            # 아니다(PR #70 리뷰) — 이 변경이 줄이는 것은 그 타임아웃 상한과
+            # 일시적 오류의 재시도 횟수이지, 403의 재시도 여부가 아니다.
             self._client = AsyncOpenAI(
                 api_key=resolved.openai_api_key,
                 timeout=resolved.llm_timeout_seconds,
@@ -87,11 +89,13 @@ class FinancialEmbedder:
         """`LLMClient._complete`와 같은 재시도 정책으로 배치 하나를 호출한다(#65).
 
         일시적 오류(타임아웃·연결 실패·429·5xx)만 정확히 1회 재시도한다. 403
-        `model_not_found` 같은 영구 오류는 재시도해도 결과가 같으므로 바로
-        올린다 — 재시도하면 응답만 느려지고(실측 2.8초) 결국 같은 실패다.
+        `model_not_found` 같은 영구 오류는 SDK도 원래 재시도하지 않지만, 여기서도
+        `OpenAIError` 분기로 명시적으로 즉시 올려 재시도 여부가 우연에 기대지
+        않게 한다.
         """
 
-        assert self._client is not None  # embed()에서 이미 확인했다.
+        if self._client is None:
+            raise LLMNotConfiguredError("OPENAI_API_KEY가 설정되지 않았습니다.")
 
         last_error: OpenAIError | None = None
         for _ in range(1 + LLM_RETRY_COUNT):
