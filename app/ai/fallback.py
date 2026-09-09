@@ -3,6 +3,9 @@
 LLM이 6초를 넘기거나 오류를 내면 Agent가 이 템플릿으로 `reply`를 채우고 `fallback=True`로
 응답한다. 여기서는 Spring이 `task_context.state`에 실어 보낸 값만 문장에 넣는다.
 집계에 없는 수치나 이유를 만들지 않는다 (NFR-02).
+
+일부 문구와 제약 상수는 Handler에서도 재사용한다. 이때는 같은 상황에 같은 응답을 쓰기
+위한 공용 계약이며 `fallback` 플래그와는 무관하다 (`ACTION_PLAN_UNAVAILABLE_REPLY`).
 """
 
 from typing import Any
@@ -10,6 +13,10 @@ from typing import Any
 from app.schemas.common import ReflectionStep, TaskType
 
 CLUSTER_NAME_MAX_LENGTH = 12
+ACTION_PLAN_UNAVAILABLE_REPLY = (
+    "지금은 제안 이유를 설명드릴 수 없어요. "
+    "제안 목록에서 예상 절감액을 확인해 주세요."
+)
 
 _REASON_SENTENCES: dict[str, str] = {
     "TIMESLOT_OUTLIER": "평소와 다른 시간대의 소비였어요.",
@@ -29,7 +36,7 @@ _REFLECTION_QUESTIONS: dict[ReflectionStep, str] = {
 
 _TASK_REPLIES: dict[TaskType, str] = {
     TaskType.ANALYSIS: "지금은 AI 설명을 준비할 수 없어요. 소비 분석 화면의 집계 결과를 확인해 주세요.",
-    TaskType.ACTION_PLAN: "지금은 제안 이유를 설명드릴 수 없어요. 제안 목록에서 예상 절감액을 확인해 주세요.",
+    TaskType.ACTION_PLAN: ACTION_PLAN_UNAVAILABLE_REPLY,
     TaskType.ANALYSIS_NARRATE: "이번 달 소비 특징은 잠시 후 다시 확인해 주세요.",
     TaskType.FINANCE_QA: "관련 금융 정보를 지금은 확인할 수 없어요. 잠시 후 다시 시도해 주세요.",
 }
