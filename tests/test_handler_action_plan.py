@@ -31,10 +31,17 @@ def _context(
 def _suggestion(suggestion_id: int, behavior_name: str) -> dict[str, Any]:
     return {
         "id": suggestion_id,
+        "behaviorId": 70,
         "behaviorName": behavior_name,
         "monthlyTotalAmount": 96000,
+        "avgAmount": 24000,
+        "txCount": 4,
+        "adjustedSatisfaction": -0.42,
         "quadrant": "PRIORITY",
+        "adjustCount": 4,
         "expectedSaving": 96000,
+        "goalId": 3,
+        "status": "PROPOSED",
         "reason": (
             f"{behavior_name}은(는) 이번 달 96,000원으로 부담이 컸고 "
             "만족도도 낮았어요. 횟수를 줄여볼까요?"
@@ -71,6 +78,21 @@ def test_action_plan_explains_matching_suggestion(fake_llm: FakeLLM) -> None:
     assert "심야 배달" in instruction
     assert "무관한 제안" not in instruction
     assert "없는 숫자나 이유를 새로 만들지 마세요" in instruction
+    for field in (
+        "behaviorName",
+        "monthlyTotalAmount",
+        "avgAmount",
+        "txCount",
+        "adjustCount",
+        "expectedSaving",
+        "reason",
+    ):
+        assert f'"{field}"' in instruction
+    assert '"behaviorId"' not in instruction
+    assert '"adjustedSatisfaction"' not in instruction
+    assert '"quadrant"' not in instruction
+    assert '"goalId"' not in instruction
+    assert '"status"' not in instruction
     assert response.tool_results[0].data is None
 
 
@@ -124,7 +146,7 @@ def test_action_plan_returns_fixed_reply_when_tool_fails(
 
     response = asyncio.run(action_plan.handle(context))
 
-    assert response.reply == action_plan.NO_MATCHING_SUGGESTION_REPLY
+    assert response.reply == action_plan.ACTION_PLAN_UNAVAILABLE_REPLY
     assert fake_llm.calls == []
     assert response.tool_results[0].success is False
     assert response.tool_results[0].data is None
