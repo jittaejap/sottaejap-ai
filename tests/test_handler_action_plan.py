@@ -43,7 +43,7 @@ def _suggestion(suggestion_id: int, behavior_name: str) -> dict[str, Any]:
         "goalId": 3,
         "status": "PROPOSED",
         "reason": (
-            f"{behavior_name}은(는) 이번 달 96,000원으로 부담이 컸고 "
+            f"{behavior_name}의 이번 달 지출이 96,000원이에요. 부담이 컸고 "
             "만족도도 낮았어요. 횟수를 줄여볼까요?"
         ),
     }
