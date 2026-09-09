@@ -12,6 +12,7 @@ from app.schemas.common import TaskType
 from tests.conftest import FakeLLM
 
 _STATE = {
+    "analysis_year_month": "2026-08",
     "by_verdict": [{"verdict": "ADJUST", "cluster_count": 3, "share": 0.18}],
     "by_category": [
         {"category": "배달", "monthly_total_amount": 96000, "avg_amount": 12000}
@@ -20,6 +21,7 @@ _STATE = {
 
 # 소수 퍼센트가 나오는 실제 모양 — 3.6%는 근거이고 9.9%는 아니다.
 _DECIMAL_STATE = {
+    "analysis_year_month": "2026-08",
     "by_verdict": [
         {
             "verdict": "ADJUST",
@@ -106,6 +108,17 @@ def test_rounded_percent_from_share_passes() -> None:
     assert response.reply == sentence
 
 
+def test_invented_single_digit_percent_is_rejected() -> None:
+    """한 자릿수라도 퍼센트면 서수 예외가 아니라 집계 근거와 대조한다(E-101)."""
+
+    sentence = "배달은 월 예산의 8%를 차지했어요."
+
+    response, _ = _handle(sentence, state=_DECIMAL_STATE)
+
+    assert response.reply == fallback_reply(TaskType.ANALYSIS_NARRATE, _DECIMAL_STATE)
+    assert response.fallback is True
+
+
 def test_invented_decimal_percent_is_rejected() -> None:
     """소수를 쪼개 읽으면 9·9가 한 자리라 그냥 통과하던 구멍이다 (E-79)."""
 
@@ -123,6 +136,32 @@ def test_single_digit_numbers_are_not_flagged() -> None:
     response, _ = _handle(sentence)
 
     assert response.reply == sentence
+
+
+def test_analysis_year_month_numbers_pass_through() -> None:
+    sentence = "2026년 8월에는 배달이 예산의 18%를 차지했어요."
+
+    response, _ = _handle(sentence)
+
+    assert response.reply == sentence
+
+
+def test_analysis_year_month_hyphen_format_passes_through() -> None:
+    sentence = "2026-08 기준 배달 소비가 가장 눈에 띄었어요."
+
+    response, _ = _handle(sentence)
+
+    assert response.reply == sentence
+
+
+def test_invalid_analysis_year_month_is_not_added_to_known_numbers() -> None:
+    state = {**_STATE, "analysis_year_month": "2026-13"}
+    sentence = "2026년에는 배달 소비가 가장 눈에 띄었어요."
+
+    response, _ = _handle(sentence, state=state)
+
+    assert response.reply == fallback_reply(TaskType.ANALYSIS_NARRATE, state)
+    assert response.fallback is True
 
 
 def test_sentence_without_numbers_passes_through() -> None:
