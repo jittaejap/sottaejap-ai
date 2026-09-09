@@ -7,6 +7,7 @@ from app.agent.handlers.base import HandlerContext
 from app.agent.prompt import HAEYO_RULE
 from app.agent.state import AgentState
 from app.agent.tool_registry import ToolRegistry
+from app.ai.fallback import FINANCE_QA_NO_EVIDENCE_REPLY
 from app.rag.retriever import RetrieverUnavailableError
 from app.schemas.common import TaskType
 from app.schemas.tool import ToolName, ToolRequest, ToolResult
@@ -104,6 +105,14 @@ def test_finance_qa_wraps_long_declarative_evidence_with_haeyo_rule(
 
 
 def test_finance_qa_says_cannot_confirm_without_evidence(fake_llm: FakeLLM) -> None:
+    """근거없음 경로는 LLM을 부르지 않고 고정 문장으로 답한다 (#74).
+
+    운영 실측(#74)에서 NO_EVIDENCE_INSTRUCTION으로 지시해도 공통 SYSTEM_PROMPT의
+    few-shot 예시("...소비 흐름을 설명하기 어려워요")를 그대로 본떠 답하는 걸
+    5/5로 못 막았다. LLM을 아예 안 부르면 이 경로에서 투자 권유(FR-12-03 · NFR-05)가
+    샐 가능성도 함께 사라진다.
+    """
+
     context = HandlerContext(
         state=AgentState(message="비트코인 투자해도 될까요"),
         llm=fake_llm,  # type: ignore[arg-type]
@@ -112,19 +121,16 @@ def test_finance_qa_says_cannot_confirm_without_evidence(fake_llm: FakeLLM) -> N
 
     response = asyncio.run(finance_qa.handle(context))
 
-    instruction = fake_llm.calls[0][0]
-    assert "확인할 수 없다" in instruction
-    # 투자 질문은 원금 손실 위험 문서를 일부러 안 실어(FR-12) 구조적으로 이 경로로
-    # 오므로, 투자 권유 금지가 여기에도 있어야 한다 (FR-12-03 · NFR-05).
-    assert "투자 권유" in instruction
-    assert HAEYO_RULE in instruction  # #51 — 근거없음 경로도 반말 사례가 확인됐다
+    assert response.reply == FINANCE_QA_NO_EVIDENCE_REPLY
+    assert fake_llm.calls == []
     assert response.tool_results[0].success is False
+    assert response.fallback is False
 
 
-def test_finance_qa_uses_no_evidence_instruction_for_empty_search_results(
+def test_finance_qa_uses_fixed_reply_for_empty_search_results(
     fake_llm: FakeLLM,
 ) -> None:
-    """검색 하한으로 결과가 비면 근거없음 지시문을 사용한다 (#28)."""
+    """검색 하한으로 결과가 비어도 같은 고정 문장으로 답한다 (#28 · #74)."""
 
     registry = ToolRegistry()
 
@@ -140,8 +146,8 @@ def test_finance_qa_uses_no_evidence_instruction_for_empty_search_results(
 
     response = asyncio.run(finance_qa.handle(context))
 
-    instruction = fake_llm.calls[0][0]
-    assert "확인할 수 없다" in instruction
+    assert response.reply == FINANCE_QA_NO_EVIDENCE_REPLY
+    assert fake_llm.calls == []
     assert response.tool_results[0].success is True
     assert response.fallback is False
 
@@ -165,8 +171,8 @@ def test_finance_qa_falls_back_to_no_evidence_reply_when_embedding_unavailable(
 
     response = asyncio.run(finance_qa.handle(context))
 
-    instruction = fake_llm.calls[0][0]
-    assert "확인할 수 없다" in instruction
+    assert response.reply == FINANCE_QA_NO_EVIDENCE_REPLY
+    assert fake_llm.calls == []
     assert response.tool_results[0].success is False
     assert response.fallback is False
 
@@ -189,6 +195,5 @@ def test_finance_qa_ignores_malformed_evidence_items(fake_llm: FakeLLM) -> None:
 
     response = asyncio.run(finance_qa.handle(context))
 
-    instruction = fake_llm.calls[0][0]
-    assert "확인할 수 없다" in instruction
-    assert response.reply == "LLM 응답"
+    assert response.reply == FINANCE_QA_NO_EVIDENCE_REPLY
+    assert fake_llm.calls == []

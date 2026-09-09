@@ -14,6 +14,7 @@ import httpx
 
 from app.agent.agent import SingleAgent
 from app.agent.tool_registry import ToolRegistry, build_default_registry
+from app.ai.fallback import FINANCE_QA_NO_EVIDENCE_REPLY
 from app.api.chat import get_agent
 from app.main import app
 from tests.conftest import TEST_SECRET, FakeLLM, SpringClientFactory
@@ -345,6 +346,7 @@ def test_chat_finance_qa_task_returns_200(
     """`FINANCIAL_RAG`는 `DATABASE_URL`이 있을 때만 등록된다 — 테스트 Registry에는
 
     없으므로 근거 없음 경로로 내려가지만, 그래도 200이어야 한다 (FR-12-02).
+    근거없음 경로는 LLM을 부르지 않고 고정 문장으로 답한다(#74).
     """
 
     task_context = {"task": "FINANCE_QA", "status": "ACTIVE", "state": {}}
@@ -355,7 +357,7 @@ def test_chat_finance_qa_task_returns_200(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["reply"] == "LLM 응답"
+    assert body["reply"] == FINANCE_QA_NO_EVIDENCE_REPLY
     assert body["fallback"] is False
     # FINANCIAL_RAG가 미등록이라 실패 영수증이 남는다 — 이 실패 자체가 근거 없음
     # 경로를 실제로 탔다는 증거다(call_tool이 KeyError를 success=False로 흡수).

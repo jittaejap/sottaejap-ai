@@ -10,36 +10,14 @@ from typing import Any
 
 from app.agent.handlers.base import HandlerContext, tool_receipt
 from app.agent.prompt import HAEYO_RULE
+from app.ai.fallback import FINANCE_QA_NO_EVIDENCE_REPLY
 from app.rag.prompt import FINANCIAL_RAG_PROMPT
 from app.schemas.chat import ChatResponse
 from app.schemas.tool import ToolName
 
 # 동일 질문을 반복해도 답변 표현이 크게 흔들리던 문제를 줄이려고 이 Task만 낮은
-# 값을 쓴다 — 다른 Task의 응답 다양성은 그대로 둔다. 안전 지시(예시 수치 오용·
-# 근거 없음 부연 설명) 위반 자체에는 로컬 테스트에서 효과가 없었다(오히려 더
-# 일관되게 재현됐다) — docs/DEVELOPMENT.md "알려진 한계" 참고.
+# 값을 쓴다 — 다른 Task의 응답 다양성은 그대로 둔다.
 _FINANCE_QA_TEMPERATURE = 0.2
-
-# 근거가 없을 때. 지어내지 말고 모른다고 끝내는 게 FR-12-02의 요구다.
-# 투자 문서(금융투자·파생·구조화 상품)는 #62의 적재 대상이다. 적재가 끝나면 투자 질문도
-# 근거 있는 경로로 오므로, 예전 주석이 기대던 "안 실어서 구조적으로 막힌다"는 전제는 그
-# 시점부터 성립하지 않는다. 근거가 없을 때도 권유가 새지 않도록 투자 권유 금지
-# (FR-12-03·NFR-05)를 여기에 남긴다. 적재 이후 근거가 있는 쪽의 방어선은
-# `app/rag/prompt.py`의 같은 문장 하나뿐이다.
-# "사전지식이라도 근거 없으면 언급하지 마세요" 정도의 소프트한 금지는 실제 테스트에서
-# 통하지 않았다 — 모델이 실존하는 외부 기관명·통계를 그대로 답에 넣은 사례가 5/5로
-# 재현됐다. "왜 안 되는지"를 설명하는 대신, 근거 없을 때 낼 수 있는 답변 형식 자체를
-# 좁혀서 부연 설명을 낼 여지를 없앤다.
-# HAEYO_RULE 부재도 실측으로 확인됐다(#51) — 기존 실측 응답 1,027건(문장 2,615개)
-# 재검토 결과 94.1%(문장 기준)가 해요체를 안 지켰다. 공통 SYSTEM_PROMPT의 해요체 규칙보다 이 지시문이
-# 나중에 붙어 더 강하게 작용하는 것은 #46·#40과 같은 패턴이라, 규칙을 여기 직접 넣는다.
-NO_EVIDENCE_INSTRUCTION = (
-    "참고할 금융 자료를 찾지 못했습니다. 확인할 수 없다는 문장 하나로만 솔직하게 "
-    "답하고, 배경 설명·수치·기관명·'~에 따르면' 같은 부연 설명은 절대 덧붙이지 "
-    "마세요. 당신이 사전에 알고 있는 내용이라도 마찬가지입니다. "
-    "개인화된 투자 권유나 확정적인 수익 표현도 하지 마세요. "
-    f"{HAEYO_RULE}"
-)
 
 
 async def handle(ctx: HandlerContext) -> ChatResponse:
@@ -48,11 +26,25 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
     result = await ctx.call_tool(ToolName.FINANCIAL_RAG, {"query": ctx.state.message})
     evidence = _evidence(result.data)
 
+    if not evidence:
+        # LLM을 안 부르고 고정 문장으로 바로 답한다(#74). "확인할 수 없다는
+        # 문장 하나로만" 요구를 지시문으로 넣어도, 모델이 공통 SYSTEM_PROMPT의
+        # few-shot 예시("...소비 흐름을 설명하기 어려워요" — 원래 ANALYSIS_NARRATE용)
+        # 문장 틀을 그대로 본떠 답하는 걸 운영 실측 5/5로 못 막았다
+        # (docs/DEVELOPMENT.md §13 CLUSTER_NAMING과 같은 패턴). LLM을 아예 안 부르면
+        # 투자 권유 금지(FR-12-03·NFR-05) 위반 가능성도 이 경로에서 사라진다.
+        # fallback=False다 — 장애가 아니라 정상적인 근거없음 처리다(#65 E-108과
+        # 같은 구분).
+        return ChatResponse(
+            reply=FINANCE_QA_NO_EVIDENCE_REPLY,
+            tool_results=[tool_receipt(result)],
+        )
+
+    # HAEYO_RULE을 근거 JSON 앞뒤에 둔다 — 긴 금융 자료(교과서 원문)의 해라체
+    # 문체가 규칙 한 줄보다 강하게 작용해 반말이 샜다(#69 실측).
     instruction = (
         f"{FINANCIAL_RAG_PROMPT}\n{HAEYO_RULE}\n"
         f"금융 자료: {json.dumps(evidence, ensure_ascii=False)}\n{HAEYO_RULE}"
-        if evidence
-        else NO_EVIDENCE_INSTRUCTION
     )
 
     return ChatResponse(
