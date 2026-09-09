@@ -1,5 +1,6 @@
 """소때잡 FastAPI 애플리케이션 진입점."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -17,6 +18,12 @@ from app.rag.retriever import FinancialRetriever
 from app.schemas.common import HealthResponse
 from app.schemas.tool import ToolName, ToolRequest
 from app.tools.financial_rag_tool import FinancialRagTool
+
+# 인덱스를 짓는 동안에는 `/health`도 못 뜬다. asyncpg는 `command_timeout` 기본값이
+# 없어서, DB가 TCP는 받아 주는데 응답을 안 하면 여기서 무한정 기다린다 — E-38
+# ("장애에도 기동은 된다")이 깨진다. 861개 Chunk 전체 읽기는 정상이면 1초 안이라
+# 상한을 넉넉히 두고, 넘으면 벡터 전용으로 기동한다.
+_INDEX_BUILD_TIMEOUT_SECONDS = 10.0
 
 
 @asynccontextmanager
@@ -52,10 +59,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # 하이브리드 검색 프로토타입(#28 후속) — BM25 인덱스는 기동 시
             # 한 번만 짓는다(861개 Chunk 기준 가벼움). 실패해도 벡터 전용으로
             # 계속 기동한다 — E-38과 같은 전제(장애에도 기동은 된다).
-            rows = await pool.fetch("SELECT chunk_id, content FROM financial_chunks")
+            rows = await asyncio.wait_for(
+                pool.fetch("SELECT chunk_id, content FROM financial_chunks"),
+                timeout=_INDEX_BUILD_TIMEOUT_SECONDS,
+            )
             keyword_index = KeywordIndex.build([(r["chunk_id"], r["content"]) for r in rows])
-        except Exception:  # noqa: BLE001
-            print("하이브리드 검색 비활성 — BM25 인덱스를 짓지 못했습니다.")
+        except Exception as exc:  # noqa: BLE001
+            # 원인을 같이 남긴다. 테이블 없음(server Flyway `V8` 미적용) · 타임아웃 ·
+            # 메모리 부족이 운영 로그에서 같은 한 줄로 보이면 진단할 수가 없다.
+            # 이 경로로 떨어지면 **재기동 전까지** 계속 벡터 전용이라 #78이 되살아난다.
+            print(
+                "하이브리드 검색 비활성 — BM25 인덱스를 짓지 못했습니다: "
+                f"{type(exc).__name__}: {exc}"
+            )
         retriever = FinancialRetriever(
             pool, FinancialEmbedder(settings=settings), keyword_index=keyword_index
         )
