@@ -25,12 +25,19 @@ async def request(method: str, path: str, **kwargs: object) -> httpx.Response:
         return await client.request(method, path, **kwargs)
 
 
-def _chat(task_context: dict[str, Any] | None, message: str = "질문") -> httpx.Response:
+def _chat(
+    task_context: dict[str, Any] | None,
+    message: str = "질문",
+    recent_messages: list[dict[str, str]] | None = None,
+) -> httpx.Response:
+    body: dict[str, Any] = {"message": message, "user_id": "1", "task_context": task_context}
+    if recent_messages is not None:
+        body["recent_messages"] = recent_messages
     return asyncio.run(
         request(
             "POST",
             "/chat",
-            json={"message": message, "user_id": "1", "task_context": task_context},
+            json=body,
             headers={"X-Internal-Secret": TEST_SECRET},
         )
     )
@@ -53,6 +60,7 @@ def _chat_with_registry(
     routes: dict[str, dict[str, Any]],
     task_context: dict[str, Any] | None,
     message: str = "질문",
+    recent_messages: list[dict[str, str]] | None = None,
 ) -> httpx.Response:
     spring_client = make_client(_spring_handler(routes))
     registry: ToolRegistry = build_default_registry(spring_client)
@@ -60,7 +68,7 @@ def _chat_with_registry(
         tool_registry=registry, llm_client=fake_llm  # type: ignore[arg-type]
     )
     try:
-        return _chat(task_context, message)
+        return _chat(task_context, message, recent_messages)
     finally:
         app.dependency_overrides.clear()
 
@@ -144,6 +152,57 @@ def test_chat_reflection_intro_task_returns_200(
     assert body["fallback"] is False
 
 
+def test_chat_reflection_satisfaction_step_fills_tool_results_data(
+    make_client: SpringClientFactory,
+) -> None:
+    """05 §3이 계약으로 못박은 유일한 `tool_results[].data` 자리를 확인한다.
+
+    INTRO만으로는 `_response()`가 만드는 회고 후보값(표준 태그 또는 `null`, E-20)이
+    한 번도 검사되지 않는다 — 다음 단계(SATISFACTION)를 하나 더 불러 채운다.
+    """
+
+    llm = FakeLLM(json_reply={"satisfaction": "LOW", "ack": "배가 고프면 그럴 수 있어요."})
+    task_context = {
+        "task": "REFLECTION",
+        "status": "ACTIVE",
+        "state": {
+            "transaction": {
+                "id": 1043,
+                "occurred_at": "2026-08-22T23:10:00+09:00",
+                "merchant": "○○배달",
+                "amount": 12000,
+                "category": "배달",
+                "time_slot": "NIGHT",
+            },
+            "reason_code": "TIMESLOT_OUTLIER",
+            "reflection": {
+                "satisfaction": "UNKNOWN",
+                "purpose": None,
+                "companion": None,
+                "repeat_intention": None,
+            },
+            "step": "SATISFACTION",
+        },
+    }
+
+    response = _chat_with_registry(
+        make_client,
+        llm,
+        {},
+        task_context,
+        message="그냥 배고파서 혼자 시켰어요",
+        recent_messages=[{"role": "assistant", "content": "이 소비, 만족하셨나요?"}],
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tool_results"][0]["tool_name"] == "reflection"
+    data = body["tool_results"][0]["data"]
+    assert data["satisfaction"] == "LOW"
+    assert data["purpose"] is None
+    assert data["companion"] is None
+
+
 def test_chat_action_plan_task_returns_200(
     fake_llm: FakeLLM, make_client: SpringClientFactory
 ) -> None:
@@ -179,6 +238,11 @@ def test_chat_action_plan_task_returns_200(
     body = response.json()
     assert body["reply"] == "LLM 응답"
     assert body["fallback"] is False
+    # Mock Spring 라우트가 실제로 불려 Handler를 탔다는 증거 — 안 그러면 일반
+    # 경로(HANDLERS 미등록 시 폴백 아님)도 같은 200·reply·fallback을 준다.
+    assert [r["tool_name"] for r in body["tool_results"]] == ["action_plan"]
+    assert body["tool_results"][0]["success"] is True
+    assert body["tool_results"][0]["data"] is None
 
 
 def test_chat_analysis_task_returns_200(
@@ -216,6 +280,9 @@ def test_chat_analysis_task_returns_200(
     body = response.json()
     assert body["reply"] == "LLM 응답"
     assert body["fallback"] is False
+    assert [r["tool_name"] for r in body["tool_results"]] == ["analysis"]
+    assert body["tool_results"][0]["success"] is True
+    assert body["tool_results"][0]["data"] is None
 
 
 def test_chat_analysis_narrate_task_returns_200(
@@ -290,6 +357,10 @@ def test_chat_finance_qa_task_returns_200(
     body = response.json()
     assert body["reply"] == "LLM 응답"
     assert body["fallback"] is False
+    # FINANCIAL_RAG가 미등록이라 실패 영수증이 남는다 — 이 실패 자체가 근거 없음
+    # 경로를 실제로 탔다는 증거다(call_tool이 KeyError를 success=False로 흡수).
+    assert body["tool_results"][0]["tool_name"] == "financial_rag"
+    assert body["tool_results"][0]["success"] is False
 
 
 def test_chat_cluster_naming_falls_back_when_llm_unavailable() -> None:
