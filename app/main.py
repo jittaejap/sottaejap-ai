@@ -12,6 +12,7 @@ from app.api.chat import router as chat_router
 from app.clients.spring_client import SpringClient
 from app.core.config import get_settings
 from app.rag.embedding import FinancialEmbedder
+from app.rag.keyword_index import KeywordIndex
 from app.rag.retriever import FinancialRetriever
 from app.schemas.common import HealthResponse
 from app.schemas.tool import ToolName, ToolRequest
@@ -46,7 +47,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     spring_client = SpringClient(settings=settings)
     registry = build_default_registry(spring_client)
     if pool is not None:
-        retriever = FinancialRetriever(pool, FinancialEmbedder(settings=settings))
+        keyword_index = None
+        try:
+            # 하이브리드 검색 프로토타입(#28 후속) — BM25 인덱스는 기동 시
+            # 한 번만 짓는다(861개 Chunk 기준 가벼움). 실패해도 벡터 전용으로
+            # 계속 기동한다 — E-38과 같은 전제(장애에도 기동은 된다).
+            rows = await pool.fetch("SELECT chunk_id, content FROM financial_chunks")
+            keyword_index = KeywordIndex.build([(r["chunk_id"], r["content"]) for r in rows])
+        except Exception:  # noqa: BLE001
+            print("하이브리드 검색 비활성 — BM25 인덱스를 짓지 못했습니다.")
+        retriever = FinancialRetriever(
+            pool, FinancialEmbedder(settings=settings), keyword_index=keyword_index
+        )
         rag_tool = FinancialRagTool(retriever)
         registry.register(
             ToolName.FINANCIAL_RAG,
