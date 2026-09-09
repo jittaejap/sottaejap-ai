@@ -1,6 +1,11 @@
 """LLM 폴백 템플릿이 작업·단계별로 문서(05 §3) 규칙을 지키는지 확인한다."""
 
-from app.ai.fallback import CLUSTER_NAME_MAX_LENGTH, DEFAULT_REPLY, fallback_reply
+from app.ai.fallback import (
+    ACTION_PLAN_UNAVAILABLE_REPLY,
+    CLUSTER_NAME_MAX_LENGTH,
+    DEFAULT_REPLY,
+    fallback_reply,
+)
 from app.schemas.common import TaskType
 
 TRANSACTION = {"merchant": "○○배달", "amount": 12000, "category": "배달", "time_slot": "NIGHT"}
@@ -46,6 +51,10 @@ def test_finance_qa_has_fixed_unavailable_reply() -> None:
     assert fallback_reply(TaskType.FINANCE_QA, {}) == (
         "관련 금융 정보를 지금은 확인할 수 없어요. 잠시 후 다시 시도해 주세요."
     )
+
+
+def test_action_plan_has_shared_unavailable_reply() -> None:
+    assert fallback_reply(TaskType.ACTION_PLAN, {}) == ACTION_PLAN_UNAVAILABLE_REPLY
 
 
 def test_unknown_task_returns_default() -> None:

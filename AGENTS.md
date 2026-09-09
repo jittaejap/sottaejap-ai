@@ -80,7 +80,7 @@ Python = Agent / 자연어 / Tool Calling / RAG / 설명
 ## 알려진 갭 — 지어내지 말고 보고한다
 
 - Tool Calling 실행 루프 · 금융 RAG 문서 적재는 TODO입니다. Agent는 지금 LLM 1회 호출 또는 폴백만 합니다.
-  REFLECTION·CLUSTER_NAMING·FINANCE_QA는 Handler가 있고, ANALYSIS·ACTION_PLAN·ANALYSIS_NARRATE는 아직 없습니다.
+  REFLECTION·ACTION_PLAN·CLUSTER_NAMING·FINANCE_QA는 Handler가 있고, ANALYSIS·ANALYSIS_NARRATE는 아직 없습니다.
 - Spring → AI 타임아웃(15초)과 AI 내부 합계(LLM 6초 × 최대 2회 + Spring 10초 × 호출 수)의 정합은 9/7 실측 후 확정입니다 (07 §10 리스크 4).
   한 요청에서 Spring을 여러 번 부르는 코드를 넣으면 이 표를 먼저 고칩니다.
 

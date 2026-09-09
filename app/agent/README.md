@@ -35,13 +35,14 @@ HANDLERS에서 Task Handler 조회
 ChatResponse
 ```
 
-`HANDLERS`에는 현재 `TaskType.REFLECTION`(#34) · `TaskType.CLUSTER_NAMING`(#29) · `TaskType.FINANCE_QA`(#21)가 등록돼 있다. `SingleAgent.run()`은 ACTIVE Task에 등록된 Handler가 있으면 실행하고, 없으면 시스템 프롬프트에 현재 작업과 `state`를 붙여 기존처럼 LLM을 1회 호출한다. COMPLETED Task는 Handler를 실행하지 않는다. `LLMUnavailableError`(6초 초과 · 재시도 1회 실패)나 `LLMNotConfiguredError`(키 없음)는 `SingleAgent.run()` 한 곳에서 `app/ai/fallback.py` 템플릿과 `fallback=True` 응답으로 전환한다. OpenAI Tool Calling 실행 루프와 나머지 Task(ACTION_PLAN·ANALYSIS·ANALYSIS_NARRATE)의 Handler는 TODO다. 별도 Agent Framework는 필요가 검증되기 전 도입하지 않는다.
+`HANDLERS`에는 현재 `TaskType.REFLECTION`(#34) · `TaskType.ACTION_PLAN`(#33) · `TaskType.CLUSTER_NAMING`(#29) · `TaskType.FINANCE_QA`(#21)가 등록돼 있다. `SingleAgent.run()`은 ACTIVE Task에 등록된 Handler가 있으면 실행하고, 없으면 시스템 프롬프트에 현재 작업과 `state`를 붙여 기존처럼 LLM을 1회 호출한다. COMPLETED Task는 Handler를 실행하지 않는다. `LLMUnavailableError`(6초 초과 · 재시도 1회 실패)나 `LLMNotConfiguredError`(키 없음)는 `SingleAgent.run()` 한 곳에서 `app/ai/fallback.py` 템플릿과 `fallback=True` 응답으로 전환한다. OpenAI Tool Calling 실행 루프와 나머지 Task(ANALYSIS·ANALYSIS_NARRATE)의 Handler는 TODO다. 별도 Agent Framework는 필요가 검증되기 전 도입하지 않는다.
 
 ## 파일 책임
 
 - `agent.py`: Single Agent 조정 진입점
 - `handlers/base.py`: Handler가 공유하는 LLM·Tool 실행 Context와 응답용 Tool 영수증
 - `handlers/__init__.py`: Task별 Handler를 연결하는 `HANDLERS` 레지스트리
+- `handlers/action_plan.py`: `TaskType.ACTION_PLAN` — 요청된 행동 제안만 선별해 Spring이 계산한 이유를 대화체로 설명한다
 - `handlers/cluster_naming.py`: `TaskType.CLUSTER_NAMING` — Spring이 전달한 묶음 정보로 12자 이내 이름을 만든다
 - `handlers/finance_qa.py`: `TaskType.FINANCE_QA` — `FINANCIAL_RAG` Tool로 근거를 찾아 그 안에서만 답하고, 없으면 모른다고 답한다
 - `handlers/reflection.py`: `TaskType.REFLECTION` — `step`에 맞춰 인사 또는 후보값 추출을 하고, 확정값과 병합해 다음 질문을 붙인다
