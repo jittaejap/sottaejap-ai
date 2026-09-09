@@ -13,7 +13,7 @@ from app.schemas.chat import ChatResponse
 from app.schemas.tool import ToolName
 
 NO_ANALYSIS_DATA_REPLY = (
-    "지금은 분석할 만한 소비 데이터가 없어요. 소비가 더 쌓이면 다시 확인해 주세요."
+    "이번 달에 돌아본 소비가 아직 없어요. 이번 달 거래를 몇 건 회고하면 분석을 보여드릴 수 있어요."
 )
 ANALYSIS_INSTRUCTION = (
     "아래 소비 분석 집계를 바탕으로 사용자 질문에 답하세요. 집계에 없는 수치나 "
