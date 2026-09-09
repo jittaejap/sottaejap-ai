@@ -84,6 +84,20 @@ def test_intro_explains_selection_without_extracting() -> None:
     assert response.needs_clarification is False
 
 
+def test_intro_instruction_pins_the_polite_ending() -> None:
+    """INTRO 지시문은 해요체 어미를 직접 못박아야 한다 (#46 회귀 방지).
+
+    `build_system_prompt()`가 공통 `SYSTEM_PROMPT` **뒤에** Task 지시문을 붙이므로 나중에
+    붙은 쪽이 이긴다. 앞쪽 해요체 규칙만 믿었더니 "돌아보자고"라는 표현이 문체 본보기로
+    새어 인사가 통째로 반말로 나갔다 (실측 반말 4/4 → 고친 뒤 해요체 6/6). #25의
+    FINANCE_QA 길이 규칙이 같은 자리에서 깨졌던 것과 같은 함정이다.
+    """
+
+    assert "돌아보자고" not in reflection.INTRO_INSTRUCTION
+    assert '"~요"로 끝나는 해요체' in reflection.INTRO_INSTRUCTION
+    assert "반말로 끝내지 않습니다" in reflection.INTRO_INSTRUCTION
+
+
 def test_reply_is_ack_plus_next_question() -> None:
     llm = FakeLLM(json_reply={"satisfaction": "LOW", "ack": "배가 고프면 그럴 수 있어요."})
 
