@@ -80,18 +80,44 @@ def test_analysis_answers_from_aggregate(fake_llm: FakeLLM) -> None:
     assert response.tool_results[0].data is None
 
 
-def test_analysis_returns_fixed_reply_when_no_valid_clusters(fake_llm: FakeLLM) -> None:
+def test_analysis_returns_no_retrospect_reply_when_no_valid_clusters(
+    fake_llm: FakeLLM,
+) -> None:
+    """유효 묶음이 진짜 0개면(회고 자체가 없음) NO_RETROSPECT_REPLY다 (#50)."""
+
     registry = ToolRegistry()
-
-    async def handler(request: ToolRequest) -> ToolResult:
-        return ToolResult(tool_name=ToolName.ANALYSIS, data=_analysis_data(by_category=[]))
-
-    registry.register(ToolName.ANALYSIS, handler)
+    data = {
+        "analysisYearMonth": "2026-08",
+        "byVerdict": [
+            {"verdict": "SUSTAIN", "clusterCount": 0, "monthlyTotalAmount": 0, "share": None},
+            {"verdict": "ADJUST", "clusterCount": 0, "monthlyTotalAmount": 0, "share": None},
+        ],
+        "pending": {"clusterCount": 0, "monthlyTotalAmount": 0, "share": None},
+        "byCategory": [],
+    }
+    _register(registry, data)
     context = _context(fake_llm, {}, registry)
 
     response = asyncio.run(analysis.handle(context))
 
-    assert response.reply == analysis.NO_ANALYSIS_DATA_REPLY
+    assert response.reply == analysis.NO_RETROSPECT_REPLY
+    assert fake_llm.calls == []
+    assert response.tool_results[0].data is None
+
+
+def test_analysis_returns_month_activity_reply_when_clusters_exist_but_category_empty(
+    fake_llm: FakeLLM,
+) -> None:
+    """유효 묶음은 있는데 이번 달 회고가 없어 byCategory만 빈 경우다 (#50 · E-73)."""
+
+    registry = ToolRegistry()
+    _register(registry, _analysis_data(by_category=[]))
+    context = _context(fake_llm, {}, registry)
+
+    response = asyncio.run(analysis.handle(context))
+
+    assert response.reply == analysis.NO_MONTH_ACTIVITY_REPLY
+    assert response.reply != analysis.NO_RETROSPECT_REPLY
     assert fake_llm.calls == []
     assert response.tool_results[0].data is None
 
