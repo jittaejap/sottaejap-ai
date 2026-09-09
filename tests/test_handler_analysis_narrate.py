@@ -119,6 +119,25 @@ def test_invented_single_digit_percent_is_rejected() -> None:
     assert response.fallback is True
 
 
+def test_spaced_single_digit_percent_is_still_rejected() -> None:
+    """`%` 앞 공백으로 한 자릿수 비율 검증을 우회할 수 없다."""
+
+    sentence = "배달은 월 예산의 8 %를 차지했어요."
+
+    response, _ = _handle(sentence, state=_DECIMAL_STATE)
+
+    assert response.reply == fallback_reply(TaskType.ANALYSIS_NARRATE, _DECIMAL_STATE)
+    assert response.fallback is True
+
+
+def test_spaced_known_single_digit_percent_passes() -> None:
+    sentence = "배달은 월 예산의 4 %를 차지했어요."
+
+    response, _ = _handle(sentence, state=_DECIMAL_STATE)
+
+    assert response.reply == sentence
+
+
 def test_invented_decimal_percent_is_rejected() -> None:
     """소수를 쪼개 읽으면 9·9가 한 자리라 그냥 통과하던 구멍이다 (E-79)."""
 

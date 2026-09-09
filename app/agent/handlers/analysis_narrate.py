@@ -119,14 +119,14 @@ def _has_unverified_number(
 ) -> bool:
     """문장에 등장한 숫자 중 근거에 없는 게 있으면 True다.
 
-    한 자리 정수는 서수 표현에 섞일 수 있어 건너뛰되, 바로 뒤에 `%`가 붙으면
-    비율이므로 반드시 검사한다. 퍼센트는 연·월 같은 일반 숫자와 값이 같아도
-    통과하지 않도록 `share`에서 만든 별도 집합과 견준다(E-79 · E-101).
+    한 자리 정수는 서수 표현에 섞일 수 있어 건너뛰되, 뒤의 공백을 제외한 첫
+    문자가 `%`면 비율이므로 반드시 검사한다. 퍼센트는 연·월 같은 일반 숫자와
+    값이 같아도 통과하지 않도록 `share`에서 만든 별도 집합과 견준다(E-79 · E-101).
     """
 
     for match in _NUMBER_PATTERN.finditer(sentence):
         text = match.group().replace(",", "")
-        is_percent = match.end() < len(sentence) and sentence[match.end()] == "%"
+        is_percent = sentence[match.end() :].lstrip().startswith("%")
         if "." not in text and len(text) < 2 and not is_percent:
             continue
         value = float(text)
