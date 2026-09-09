@@ -62,6 +62,47 @@ def test_finance_qa_answers_from_evidence_when_available(fake_llm: FakeLLM) -> N
     assert fake_llm.temperatures[0] == 0.2
 
 
+def test_finance_qa_wraps_long_declarative_evidence_with_haeyo_rule(
+    fake_llm: FakeLLM,
+) -> None:
+    """긴 해라체 근거 앞뒤에 해요체 규칙을 둬 문체가 밀리는 회귀를 막는다 (#69)."""
+
+    evidence_content = (
+        "펀드는 투자자로부터 모은 자금을 자산에 운용하는 실적배당상품이다. "
+        "운용 결과에 따라 원금 손실이 발생할 수 있으며 수익은 투자자에게 귀속된다. "
+        "투자자는 상품의 위험과 수수료를 확인하고 자신의 판단과 책임으로 결정한다. "
+    ) * 20
+    registry = ToolRegistry()
+
+    async def handler(request: ToolRequest) -> ToolResult:
+        return ToolResult(
+            tool_name=ToolName.FINANCIAL_RAG,
+            data=[
+                {
+                    "chunk": {
+                        "content": evidence_content,
+                        "source": "금융교과서",
+                    }
+                }
+            ],
+        )
+
+    registry.register(ToolName.FINANCIAL_RAG, handler)
+    context = HandlerContext(
+        state=AgentState(message="펀드에 넣으면 얼마 벌 수 있나요"),
+        llm=fake_llm,  # type: ignore[arg-type]
+        tools=registry,
+    )
+
+    asyncio.run(finance_qa.handle(context))
+
+    instruction = fake_llm.calls[0][0]
+    evidence_start = instruction.index("금융 자료:")
+    evidence_end = instruction.index(evidence_content) + len(evidence_content)
+    assert instruction.index(HAEYO_RULE) < evidence_start
+    assert instruction.index(HAEYO_RULE, evidence_end) > evidence_end
+
+
 def test_finance_qa_says_cannot_confirm_without_evidence(fake_llm: FakeLLM) -> None:
     context = HandlerContext(
         state=AgentState(message="비트코인 투자해도 될까요"),
