@@ -13,7 +13,7 @@ LLM을 **1회만** 부르고 그 한 응답에서 후보값과 공감 한마디�
 import json
 from typing import Any, NamedTuple
 
-from app.core.llm import LLMClient
+from app.core.llm import LLMClient, LLMUnavailableError
 from app.reflection.normalizer import normalize_companion, normalize_purpose
 from app.reflection.schemas import Companion, Purpose, ReflectionExtraction, Satisfaction
 from app.reflection.validator import validate
@@ -76,7 +76,7 @@ class ReflectionExtractor:
         )
         return ReflectionTurn(
             extraction=validate(_to_extraction(payload)),
-            ack=_one_line(payload.get("ack")),
+            ack=_required_ack(payload.get("ack")),
         )
 
 
@@ -128,6 +128,23 @@ def _optional_bool(value: Any) -> bool | None:
 
 def _optional_text(value: Any) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _required_ack(value: Any) -> str:
+    """공감 문장은 응답의 필수 키다. 비어 있으면 온전한 결과가 아니다.
+
+    값만 있고 문장이 없는 응답을 그대로 통과시키면, Handler가 공감 없이 질문만 던지는
+    화면이 `fallback=False`로 나간다. 그럴 바에는 폴백 템플릿이 낫다 — 여기서
+    ``LLMUnavailableError``를 올려 ``SingleAgent.run``의 폴백 경로로 보낸다.
+
+    문체 품질(해요체 · 한 문장 · 질문 금지)은 여기서 판정하지 않는다. 프롬프트와 A6의
+    몫이고, 코드는 "실제로 문장이 있는가"라는 구조 경계만 지킨다.
+    """
+
+    ack = _one_line(value)
+    if not ack:
+        raise LLMUnavailableError("LLM 응답에 공감 문장(ack)이 없습니다.")
+    return ack
 
 
 def _one_line(value: Any) -> str:

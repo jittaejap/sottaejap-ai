@@ -89,6 +89,7 @@ def test_extractor_drops_values_outside_standard_tags() -> None:
             "companion": "직장 동료들",
             "satisfaction": "MEDIUM",
             "repeat_intention": "true",
+            "ack": "야식이 생각나는 날이 있죠.",
         }
     )
     extractor = ReflectionExtractor(llm_client=llm)  # type: ignore[arg-type]
@@ -105,11 +106,10 @@ def test_extractor_drops_values_outside_standard_tags() -> None:
         "satisfaction",
         "repeat_intention",
     ]
-    assert turn.ack == ""
 
 
 def test_extractor_uses_last_question_without_leaking_its_values() -> None:
-    llm = FakeLLM(json_reply={"satisfaction": "LOW"})
+    llm = FakeLLM(json_reply={"satisfaction": "LOW", "ack": "아쉬우셨겠어요."})
     extractor = ReflectionExtractor(llm_client=llm)  # type: ignore[arg-type]
 
     turn = asyncio.run(
@@ -128,7 +128,7 @@ def test_extractor_uses_last_question_without_leaking_its_values() -> None:
 
 
 def test_extractor_prompt_lists_standard_tags_and_asks_for_json() -> None:
-    llm = FakeLLM(json_reply={})
+    llm = FakeLLM(json_reply={"ack": "그러셨군요."})
     extractor = ReflectionExtractor(llm_client=llm)  # type: ignore[arg-type]
 
     asyncio.run(extractor.extract("음"))
@@ -141,7 +141,7 @@ def test_extractor_prompt_lists_standard_tags_and_asks_for_json() -> None:
 
 
 def test_extractor_rejects_empty_text_before_calling_llm() -> None:
-    llm = FakeLLM(json_reply={})
+    llm = FakeLLM(json_reply={"ack": "그러셨군요."})
     extractor = ReflectionExtractor(llm_client=llm)  # type: ignore[arg-type]
 
     with pytest.raises(ValueError):
@@ -155,3 +155,25 @@ def test_extractor_does_not_swallow_llm_failure() -> None:
 
     with pytest.raises(LLMUnavailableError):
         asyncio.run(extractor.extract("혼자 먹었어요"))
+
+
+@pytest.mark.parametrize("ack", [None, "", "   ", "\n\t", 1, ["문장"]])
+def test_extractor_requires_a_real_ack_sentence(ack: object) -> None:
+    """값만 있고 공감 문장이 없는 응답은 온전한 결과가 아니다 — 폴백으로 보낸다."""
+
+    payload: dict[str, object] = {"satisfaction": "LOW"}
+    if ack is not None:
+        payload["ack"] = ack
+    extractor = ReflectionExtractor(llm_client=FakeLLM(json_reply=payload))  # type: ignore[arg-type]
+
+    with pytest.raises(LLMUnavailableError):
+        asyncio.run(extractor.extract("별로였어요"))
+
+
+def test_extractor_trims_whitespace_inside_ack() -> None:
+    llm = FakeLLM(json_reply={"ack": "  배가 고프면\n  그럴 수 있어요.  "})
+    extractor = ReflectionExtractor(llm_client=llm)  # type: ignore[arg-type]
+
+    turn = asyncio.run(extractor.extract("혼자 시켰어요"))
+
+    assert turn.ack == "배가 고프면 그럴 수 있어요."

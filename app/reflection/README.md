@@ -46,6 +46,8 @@ Extractor는 LLM을 **1회만** 부르고 그 한 응답에서 후보값과 공�
 
 직전 assistant 질문은 사용자의 짧은 답이 어느 항목에 대한 것인지 판단할 때만 참고하고, 질문 문장에만 등장한 값은 추출하지 않는다.
 
+`ack`는 필수 키다. 값만 있고 문장이 비어 있으면 `LLMUnavailableError`를 올려 폴백 템플릿으로 보낸다 — 공감 없이 질문만 던지는 응답이 `fallback=False`로 나가는 것보다 낫다. 문체 품질은 프롬프트의 몫이고 코드는 문장이 실제로 있는지만 본다.
+
 LLM 출력을 그대로 믿지 않는다. 표준 태그 목록 밖 문자열은 `normalize_*`가 `None`으로 만들고, Pydantic 검증과 사용자 확인 단계는 그대로 유지한다. `LLMUnavailableError`는 여기서 잡지 않는다 — 폴백 전환은 `SingleAgent.run` 한 곳이 담당한다.
 
 REFLECTION Handler(6단계 대화 진행)는 아직 없다. 지금은 추출기만 있고 `/chat`의 REFLECTION 요청은 일반 `generate()`로 빠진다.
