@@ -231,3 +231,22 @@ def test_client_uses_configured_timeout_and_disables_sdk_retries() -> None:
     assert embedder._client is not None  # type: ignore[attr-defined]
     assert embedder._client.timeout == 6.0  # type: ignore[attr-defined]
     assert embedder._client.max_retries == 0  # type: ignore[attr-defined]
+
+
+def test_explicit_timeout_seconds_overrides_llm_timeout() -> None:
+    """대량 배치 호출(적재 스크립트 등)은 `llm_timeout_seconds`와 다른 값을 쓸 수 있다(PR #70 리뷰 5).
+
+    실시간 질문 경로(FINANCE_QA)는 배치 1개뿐이라 `llm_timeout_seconds`(6초)로
+    충분하지만, `scripts/ingest_financial_docs.py`처럼 배치당 최대 100 Chunk를
+    한 번에 보내는 경로는 6초가 빠듯할 수 있다 — `timeout_seconds`를 명시하면
+    그 값을 그대로 쓰고 `llm_timeout_seconds`는 무시된다.
+    """
+
+    embedder = FinancialEmbedder(
+        settings=Settings(openai_api_key="k", llm_timeout_seconds=6.0),
+        timeout_seconds=60.0,
+    )
+
+    assert embedder._client is not None  # type: ignore[attr-defined]
+    assert embedder._client.timeout == 60.0  # type: ignore[attr-defined]
+    assert embedder._client.max_retries == 0  # type: ignore[attr-defined]

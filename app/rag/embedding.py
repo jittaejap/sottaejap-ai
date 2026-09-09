@@ -43,6 +43,7 @@ class FinancialEmbedder:
         settings: Settings | None = None,
         client: AsyncOpenAI | None = None,
         model: str = DEFAULT_EMBEDDING_MODEL,
+        timeout_seconds: float | None = None,
     ) -> None:
         resolved = settings or get_settings()
         if client is not None:
@@ -55,9 +56,17 @@ class FinancialEmbedder:
             # 오류만 재시도하고 403(`model_not_found`)은 원래도 재시도 대상이
             # 아니다(PR #70 리뷰) — 이 변경이 줄이는 것은 그 타임아웃 상한과
             # 일시적 오류의 재시도 횟수이지, 403의 재시도 여부가 아니다.
+            #
+            # `timeout_seconds`를 안 넘기면 `llm_timeout_seconds`(6초)를 쓴다 —
+            # FINANCE_QA 실시간 질문(배치 1개, 텍스트 하나)엔 이 값이 맞다.
+            # `scripts/ingest_financial_docs.py`는 배치당 최대 100 Chunk(≈4만
+            # 토큰)를 한 번에 보내 6초로는 빠듯할 수 있어, 별도로 더 긴 값을
+            # 넘긴다(PR #70 리뷰 5) — 그 경로엔 AI_TIMEOUT_MS 15초 예산이 없다.
             self._client = AsyncOpenAI(
                 api_key=resolved.openai_api_key,
-                timeout=resolved.llm_timeout_seconds,
+                timeout=timeout_seconds
+                if timeout_seconds is not None
+                else resolved.llm_timeout_seconds,
                 max_retries=0,
             )
         else:
