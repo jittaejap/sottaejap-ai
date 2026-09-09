@@ -116,6 +116,149 @@ def test_analysis_answers_from_aggregate(fake_llm: FakeLLM) -> None:
     assert response.tool_results[0].data is None
 
 
+def _transaction_data(
+    transactions: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "transactions": transactions
+        if transactions is not None
+        else [
+            {
+                "id": 1043,
+                "occurredAt": "2026-08-22T23:10:00+09:00",
+                "merchant": "GS25 강남점",
+                "amount": 4500,
+                "category": "배달",
+                "timeSlot": "NIGHT",
+                "retrospectId": None,
+                "satisfaction": None,
+            }
+        ],
+        "page": 0,
+        "size": 10,
+        "totalElements": 1,
+        "totalPages": 1,
+    }
+
+
+def test_analysis_looks_up_transactions_when_message_mentions_known_category(
+    fake_llm: FakeLLM,
+) -> None:
+    """질문에 `byCategory`의 카테고리명이 있으면 개별 거래를 근거에 얹는다 (#82)."""
+
+    registry = ToolRegistry()
+    _register(registry, _analysis_data())
+    transaction_requests: list[ToolRequest] = []
+
+    async def transaction_handler(request: ToolRequest) -> ToolResult:
+        transaction_requests.append(request)
+        return ToolResult(tool_name=ToolName.TRANSACTION, data=_transaction_data())
+
+    registry.register(ToolName.TRANSACTION, transaction_handler)
+    context = _context(fake_llm, {}, registry, message="배달에서 최근에 뭐 샀어?")
+
+    response = asyncio.run(analysis.handle(context))
+
+    assert transaction_requests[0].payload == {"category": "배달", "size": 10}
+    instruction = fake_llm.calls[0][0]
+    assert '"transactions"' in instruction
+    assert "GS25 강남점" in instruction
+    assert "4500" in instruction
+    # 내부 식별자는 프롬프트에 새지 않는다.
+    assert "1043" not in instruction
+    assert "retrospectId" not in instruction
+    assert len(response.tool_results) == 2
+    assert response.tool_results[1].tool_name is ToolName.TRANSACTION
+    assert response.tool_results[1].data is None  # 영수증은 data를 비운다
+
+
+def test_analysis_skips_transaction_lookup_when_no_category_mentioned(
+    fake_llm: FakeLLM,
+) -> None:
+    """카테고리명이 질문에 없으면 두 번째 Spring 호출을 하지 않는다."""
+
+    registry = ToolRegistry()
+    _register(registry, _analysis_data())
+
+    async def transaction_handler(request: ToolRequest) -> ToolResult:
+        raise AssertionError("카테고리 언급이 없는데 TRANSACTION을 불렀다")
+
+    registry.register(ToolName.TRANSACTION, transaction_handler)
+    context = _context(fake_llm, {}, registry, message="이번 달 어때?")
+
+    response = asyncio.run(analysis.handle(context))
+
+    assert len(response.tool_results) == 1
+    instruction = fake_llm.calls[0][0]
+    assert '"transactions"' not in instruction
+
+
+def test_analysis_degrades_gracefully_when_transaction_lookup_fails(
+    fake_llm: FakeLLM,
+) -> None:
+    """거래 조회가 실패해도 집계 근거만으로 정상 응답한다 — 전체를 장애로 보지 않는다."""
+
+    registry = ToolRegistry()
+    _register(registry, _analysis_data())
+
+    async def transaction_handler(request: ToolRequest) -> ToolResult:
+        return ToolResult(tool_name=ToolName.TRANSACTION, success=False, data=None)
+
+    registry.register(ToolName.TRANSACTION, transaction_handler)
+    context = _context(fake_llm, {}, registry, message="배달에서 뭐 샀어?")
+
+    response = asyncio.run(analysis.handle(context))
+
+    assert response.reply == "LLM 응답"
+    assert response.fallback is False
+    instruction = fake_llm.calls[0][0]
+    assert '"transactions"' not in instruction
+    assert len(response.tool_results) == 2
+    assert response.tool_results[1].success is False
+
+
+def test_analysis_treats_transaction_amounts_as_known_numbers(
+    fake_llm: FakeLLM,
+) -> None:
+    """개별 거래 금액을 문장에 그대로 옮겨도 근거 밖 수치로 오탐하지 않는다.
+
+    가맹점명에는 일부러 숫자를 안 섞는다 — "GS25"처럼 상호에 박힌 숫자는
+    `number_guard`의 정규식이 별개 근거 밖 수치로 오인하는 `number_guard`
+    자체의 알려진 한계라, 이 테스트(거래 금액 인식)와는 다른 문제다.
+    """
+
+    registry = ToolRegistry()
+    _register(registry, _analysis_data())
+    registry.register(
+        ToolName.TRANSACTION,
+        lambda request: _transaction_result(),
+    )
+    context = _context(fake_llm, {}, registry, message="배달에서 뭐 샀어?")
+    fake_llm.reply = "동네마트에서 4,500원을 결제했어요."
+
+    response = asyncio.run(analysis.handle(context))
+
+    assert response.reply == "동네마트에서 4,500원을 결제했어요."
+    assert response.fallback is False
+
+
+async def _transaction_result() -> ToolResult:
+    return ToolResult(
+        tool_name=ToolName.TRANSACTION,
+        data=_transaction_data(
+            [
+                {
+                    "id": 1043,
+                    "occurredAt": "2026-08-22T23:10:00+09:00",
+                    "merchant": "동네마트",
+                    "amount": 4500,
+                    "category": "배달",
+                }
+            ]
+        ),
+    )
+
+
 def test_analysis_forwards_recent_messages_as_history_for_followup_questions(
     fake_llm: FakeLLM,
 ) -> None:
