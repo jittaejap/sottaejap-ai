@@ -1,6 +1,7 @@
 """테스트 공통 설정. 외부 서비스(OpenAI · Spring · DB)를 호출하지 않는다."""
 
 from collections.abc import Callable
+from typing import Any
 
 import httpx
 import pytest
@@ -17,8 +18,13 @@ SpringClientFactory = Callable[[HttpHandler], SpringClient]
 class FakeLLM:
     """응답·실패 시뮬레이션과 호출 기록을 제공하는 공통 LLM Fake."""
 
-    def __init__(self, reply: str | None = "LLM 응답") -> None:
+    def __init__(
+        self,
+        reply: str | None = "LLM 응답",
+        json_reply: dict[str, Any] | None = None,
+    ) -> None:
         self.reply = reply
+        self.json_reply = json_reply
         self.prompts: list[str] = []
         self.calls: list[tuple[str, str]] = []
         self.temperatures: list[float | None] = []
@@ -35,6 +41,17 @@ class FakeLLM:
         if self.reply is None:
             raise LLMUnavailableError("timeout")
         return self.reply
+
+    async def generate_json(
+        self,
+        system_prompt: str,
+        user_message: str,
+    ) -> dict[str, Any]:
+        self.prompts.append(system_prompt)
+        self.calls.append((system_prompt, user_message))
+        if self.json_reply is None:
+            raise LLMUnavailableError("JSON 응답 없음")
+        return self.json_reply
 
 
 @pytest.fixture
