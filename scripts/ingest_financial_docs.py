@@ -13,6 +13,10 @@ UNIQUE 제약이 있고(V8), 재적재 전제는 `ON CONFLICT (chunk_id) DO UPDA
 `--source` 값으로 다시 넣으면 새 값으로 저장되고 이전 값의 행은 지워지지 않은 채 남는다.
 한 번 정한 `source`는 그 문서에 계속 같은 값으로 쓴다. `chunk_id`·`source`는 V8에서
 `VARCHAR(255)`라 짧은 식별자를 쓴다.
+
+그래서 `--source`는 **필수**다. 기본값을 파일명으로 두면 빠뜨렸을 때 오류 없이 파일명으로
+들어가고, 그 행은 이후 올바른 값으로 재적재해도 `WHERE source = $1`에 걸리지 않아 영영
+남는다. 쓸 값은 `docs/DEVELOPMENT.md` §6의 문서 ↔ `source` 대응표가 정본이다.
 """
 
 import argparse
@@ -50,7 +54,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("document", type=Path, help="UTF-8 텍스트 문서 경로")
     parser.add_argument(
         "--source",
-        help="문서 식별자 (기본: 파일명). 한 번 정하면 바꾸지 않는다 — 짧게",
+        required=True,
+        help="문서 식별자. docs/DEVELOPMENT.md §6 대응표의 값을 쓴다 — 한 번 정하면 바꾸지 않는다",
     )
     parser.add_argument(
         "--dry-run",
@@ -101,8 +106,7 @@ async def ingest(document: Path, source: str, dry_run: bool) -> None:
 
 def main() -> None:
     args = parse_args()
-    source = args.source or args.document.name
-    asyncio.run(ingest(args.document, source, args.dry_run))
+    asyncio.run(ingest(args.document, args.source, args.dry_run))
 
 
 if __name__ == "__main__":

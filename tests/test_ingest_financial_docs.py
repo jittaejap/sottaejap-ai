@@ -9,7 +9,7 @@ import pytest
 
 from app.core.config import get_settings
 from app.rag.embedding import FinancialEmbedder
-from scripts.ingest_financial_docs import ingest
+from scripts.ingest_financial_docs import ingest, parse_args
 
 
 def _fail_if_called(*args: object, **kwargs: object) -> None:
@@ -104,3 +104,16 @@ def test_reingest_deletes_previous_chunks_by_source_once(
     assert connection.closed is True
 
     get_settings.cache_clear()
+
+
+def test_source_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--source`를 빠뜨리면 멈춘다 (PR #64 리뷰 2).
+
+    기본값을 파일명으로 두면 빠뜨렸을 때 오류 없이 파일명으로 적재되고, 삭제 기준이
+    `WHERE source = $1`이라 그 행은 이후 올바른 값으로 재적재해도 지워지지 않는다.
+    """
+
+    monkeypatch.setattr("sys.argv", ["ingest_financial_docs.py", "doc.txt"])
+
+    with pytest.raises(SystemExit):
+        parse_args()
