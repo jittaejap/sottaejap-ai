@@ -11,9 +11,9 @@ from app.ai.fallback import CLUSTER_NAME_MAX_LENGTH
 from app.schemas.chat import ChatResponse
 
 CLUSTER_NAME_INSTRUCTION = (
-    "가맹점 이름과 소비 건수를 참고해서 이 소비 묶음에 어울리는 한국어 이름을 "
-    "하나만 지어주세요. 브랜드명이나 카테고리 위주로, 설명 없이 이름만 12자 "
-    "이내로 답하세요."
+    "묶음 키는 카테고리|시간대|목적|동행인 순서입니다. 묶음 키와 가맹점 이름, "
+    "소비 건수를 참고해서 이 소비 묶음에 어울리는 한국어 이름을 하나만 지어주세요. "
+    "브랜드명이나 카테고리 위주로, 설명 없이 이름만 12자 이내로 답하세요."
 )
 
 
@@ -26,12 +26,12 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
         f"묶음 정보: {json.dumps(cluster_info, ensure_ascii=False)}"
     )
 
-    reply = (await ctx.generate(instruction)).strip()
-    if not reply:
-        merchants = cluster_info["sample_merchants"]
-        reply = merchants[0].strip() if merchants else "반복 소비 묶음"
-        if not reply:
-            reply = "반복 소비 묶음"
+    reply = (
+        (await ctx.generate(instruction))
+        .strip()
+        .partition("\n")[0]
+        .strip(" \"'“”")
+    )
 
     return ChatResponse(
         reply=reply[:CLUSTER_NAME_MAX_LENGTH],
@@ -39,21 +39,21 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
     )
 
 
-def _cluster_info(state: Any) -> dict[str, Any]:
+def _cluster_info(state: dict[str, Any]) -> dict[str, Any]:
     """느슨한 외부 상태에서 이름 생성에 필요한 값만 안전하게 꺼낸다."""
-
-    if not isinstance(state, dict):
-        state = {}
 
     cluster_key = state.get("cluster_key")
     if not isinstance(cluster_key, str):
         cluster_key = ""
 
     sample_merchants = state.get("sample_merchants")
-    if not (
-        isinstance(sample_merchants, list)
-        and all(isinstance(merchant, str) for merchant in sample_merchants)
-    ):
+    if isinstance(sample_merchants, list):
+        sample_merchants = [
+            merchant
+            for merchant in sample_merchants
+            if isinstance(merchant, str)
+        ]
+    else:
         sample_merchants = []
 
     tx_count = state.get("tx_count")
