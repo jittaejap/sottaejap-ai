@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 from app.agent.handlers.base import HandlerContext, tool_receipt
+from app.agent.prompt import HAEYO_RULE
 from app.ai.fallback import ACTION_PLAN_UNAVAILABLE_REPLY
 from app.schemas.chat import ChatResponse
 from app.schemas.tool import ToolName
@@ -15,8 +16,8 @@ NO_MATCHING_SUGGESTION_REPLY = (
     "해당하는 제안을 찾을 수 없어요. 제안 목록에서 다시 확인해 주세요."
 )
 ACTION_PLAN_INSTRUCTION = (
-    "아래 제안 정보를 바탕으로 왜 이 제안을 하게 됐는지 자연스러운 대화체로 "
-    "설명하세요. 제공된 값에 없는 숫자나 이유를 새로 만들지 마세요."
+    "아래 제안 정보를 바탕으로 왜 이 제안을 하게 됐는지 한두 문장으로 "
+    f"설명하세요. {HAEYO_RULE} 제공된 값에 없는 숫자나 이유를 새로 만들지 마세요."
 )
 _PROMPT_FIELDS = (
     "behaviorName",

@@ -176,3 +176,17 @@ def test_action_plan_ignores_malformed_suggestions_data(
 
     assert response.reply == action_plan.NO_MATCHING_SUGGESTION_REPLY
     assert fake_llm.calls == []
+
+
+def test_action_plan_instruction_requires_polite_tone() -> None:
+    """지시문에서 해요체 규칙이 지워지는 회귀를 막는다 (#40).
+
+    "자연스러운 대화체로"라는 예전 표현이 모델을 반말로 이끌었다 — 실제
+    통합 환경에서 확인됨(이슈 #40). SYSTEM_PROMPT의 공통 규칙보다 이
+    지시문이 나중에 붙어 더 강하게 작용하므로, 규칙을 지시문 안에 직접
+    명시해야 한다(REFLECTION INTRO_INSTRUCTION과 같은 이유, #47).
+    """
+
+    assert "해요체" in action_plan.ACTION_PLAN_INSTRUCTION
+    assert "반말로 끝내지 않습니다" in action_plan.ACTION_PLAN_INSTRUCTION
+    assert "자연스러운 대화체" not in action_plan.ACTION_PLAN_INSTRUCTION

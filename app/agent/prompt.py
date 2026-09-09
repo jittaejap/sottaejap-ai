@@ -20,6 +20,14 @@ SYSTEM_PROMPT = """당신은 소때잡의 소비 회고 도우미입니다.
 """
 
 
+# build_system_prompt()가 SYSTEM_PROMPT 뒤에 Task 지시문을 붙이는 구조라, LLM은
+# 나중에 붙은 지시문 쪽을 더 강하게 따른다 — SYSTEM_PROMPT의 해요체 규칙만 믿으면
+# 밀린다(docs/DEVELOPMENT.md §12 · #46 · #40). 문장을 만드는 Task 지시문에는 이
+# 규칙을 직접 넣는다. 한 곳(여기)에서만 문구를 바꾸도록 상수로 공유한다 —
+# CLUSTER_NAMING처럼 12자 라벨만 뽑는 자리에는 쓰지 않는다.
+HAEYO_RULE = '모든 문장은 "~요"로 끝나는 해요체로 씁니다. 반말로 끝내지 않습니다.'
+
+
 def build_system_prompt(state: AgentState, instruction: str = "") -> str:
     """공통 프롬프트에 현재 맥락과 Task별 지시문을 순서대로 덧붙인다."""
 
