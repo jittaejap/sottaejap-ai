@@ -38,6 +38,12 @@ from app.rag.chunker import chunk_text  # noqa: E402
 from app.rag.embedding import FinancialEmbedder  # noqa: E402
 from app.rag.retriever import to_vector_literal  # noqa: E402
 
+# 실시간 요청(FINANCE_QA)은 배치 1개·텍스트 하나라 llm_timeout_seconds(6초)로
+# 충분하지만, 이 스크립트는 배치당 최대 100 Chunk(≈4만 토큰)를 한 번에 보낸다.
+# 이 경로엔 AI_TIMEOUT_MS 같은 요청 예산이 없는 일회성 오프라인 작업이라, 대량
+# 배치가 6초를 넘겨도 실패로 끊기지 않도록 넉넉한 값을 따로 쓴다(PR #70 리뷰 5).
+_INGEST_EMBEDDING_TIMEOUT_SECONDS = 60.0
+
 _DELETE_BY_SOURCE_SQL = "DELETE FROM financial_chunks WHERE source = $1"
 _UPSERT_SQL = """
 INSERT INTO financial_chunks (chunk_id, content, source, metadata, embedding)
@@ -106,7 +112,9 @@ async def ingest(document: Path, source: str, dry_run: bool) -> None:
     if not settings.database_url:
         raise SystemExit("DATABASE_URL이 설정되지 않았습니다.")
 
-    embedder = FinancialEmbedder(settings=settings)
+    embedder = FinancialEmbedder(
+        settings=settings, timeout_seconds=_INGEST_EMBEDDING_TIMEOUT_SECONDS
+    )
     vectors = await embedder.embed(chunks)
 
     # 일회성 스크립트라 풀이 아니라 연결 하나면 충분하다.

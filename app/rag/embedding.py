@@ -3,15 +3,25 @@
 OpenAI Embeddings API를 얇게 감싼다. Provider를 바꿔도 `embed()` 하나만 다시
 구현하면 되도록 인터페이스를 좁게 유지한다.
 
-예외는 `core/llm.py`의 것을 그대로 재사용한다 — 키가 없거나 호출이 실패하면
-`agent.py` 라우터가 이미 갖고 있는 폴백 경로(템플릿 + `fallback=True` + 200)로
-흡수된다. 임베딩 전용 예외를 새로 만들면 그 경로가 둘로 갈라진다.
+예외는 `core/llm.py`의 것을 그대로 재사용한다. 이 모듈 안에서는 `LLMClient`와
+같은 타임아웃·재시도 정책을 적용할 뿐, 이걸 누가 어떻게 흡수할지는 모른다 —
+`app/rag/retriever.py`가 `RetrieverUnavailableError`로 바꿔 검색 실패 경로로
+보낸다(#65). 여기서 임베딩 전용 예외를 새로 만들면 그 변환 지점이 둘로 갈라진다.
 """
 
-from openai import AsyncOpenAI, OpenAIError
+from typing import Any
+
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AsyncOpenAI,
+    InternalServerError,
+    OpenAIError,
+    RateLimitError,
+)
 
 from app.core.config import Settings, get_settings
-from app.core.llm import LLMNotConfiguredError, LLMUnavailableError
+from app.core.llm import LLM_RETRY_COUNT, LLMNotConfiguredError, LLMUnavailableError
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 # `financial_chunks.embedding`의 vector(N)과 같은 값이어야 한다 (04 §1 · E-85).
@@ -33,12 +43,32 @@ class FinancialEmbedder:
         settings: Settings | None = None,
         client: AsyncOpenAI | None = None,
         model: str = DEFAULT_EMBEDDING_MODEL,
+        timeout_seconds: float | None = None,
     ) -> None:
         resolved = settings or get_settings()
         if client is not None:
             self._client: AsyncOpenAI | None = client
         elif resolved.openai_api_key:
-            self._client = AsyncOpenAI(api_key=resolved.openai_api_key)
+            # LLMClient(core/llm.py)와 같은 정책 — SDK 자체 재시도를 끄고
+            # 아래 _create_batch()에서 정확히 1회만 재시도한다(#65). 이전에는
+            # 타임아웃·재시도를 안 넘겨 SDK 기본값(read 타임아웃 600초 · 일시적
+            # 오류 재시도 2회)이 그대로 적용됐다. SDK는 408·409·429·5xx·연결
+            # 오류만 재시도하고 403(`model_not_found`)은 원래도 재시도 대상이
+            # 아니다(PR #70 리뷰) — 이 변경이 줄이는 것은 그 타임아웃 상한과
+            # 일시적 오류의 재시도 횟수이지, 403의 재시도 여부가 아니다.
+            #
+            # `timeout_seconds`를 안 넘기면 `llm_timeout_seconds`(6초)를 쓴다 —
+            # FINANCE_QA 실시간 질문(배치 1개, 텍스트 하나)엔 이 값이 맞다.
+            # `scripts/ingest_financial_docs.py`는 배치당 최대 100 Chunk(≈4만
+            # 토큰)를 한 번에 보내 6초로는 빠듯할 수 있어, 별도로 더 긴 값을
+            # 넘긴다(PR #70 리뷰 5) — 그 경로엔 AI_TIMEOUT_MS 15초 예산이 없다.
+            self._client = AsyncOpenAI(
+                api_key=resolved.openai_api_key,
+                timeout=timeout_seconds
+                if timeout_seconds is not None
+                else resolved.llm_timeout_seconds,
+                max_retries=0,
+            )
         else:
             self._client = None
         self._model = model
@@ -54,13 +84,7 @@ class FinancialEmbedder:
         vectors: list[list[float]] = []
         for start in range(0, len(texts), EMBEDDING_BATCH_SIZE):
             batch = texts[start : start + EMBEDDING_BATCH_SIZE]
-            try:
-                response = await self._client.embeddings.create(
-                    model=self._model,
-                    input=batch,
-                )
-            except OpenAIError as exc:
-                raise LLMUnavailableError("임베딩 호출이 실패했습니다.") from exc
+            response = await self._create_batch(batch)
 
             # OpenAI는 배치 응답의 data 순서를 계약으로 보장하지 않는다. item.index로
             # 정렬해 입력 순서와 어긋나지 않게 한다 — 어긋나면 Chunk 본문과 벡터가
@@ -69,3 +93,35 @@ class FinancialEmbedder:
             ordered = sorted(response.data, key=lambda item: item.index)
             vectors.extend(item.embedding for item in ordered)
         return vectors
+
+    async def _create_batch(self, batch: list[str]) -> Any:
+        """`LLMClient._complete`와 같은 재시도 정책으로 배치 하나를 호출한다(#65).
+
+        일시적 오류(타임아웃·연결 실패·429·5xx)만 정확히 1회 재시도한다. 403
+        `model_not_found` 같은 영구 오류는 SDK도 원래 재시도하지 않지만, 여기서도
+        `OpenAIError` 분기로 명시적으로 즉시 올려 재시도 여부가 우연에 기대지
+        않게 한다.
+        """
+
+        if self._client is None:
+            raise LLMNotConfiguredError("OPENAI_API_KEY가 설정되지 않았습니다.")
+
+        last_error: OpenAIError | None = None
+        for _ in range(1 + LLM_RETRY_COUNT):
+            try:
+                return await self._client.embeddings.create(
+                    model=self._model,
+                    input=batch,
+                )
+            except (
+                APITimeoutError,
+                APIConnectionError,
+                RateLimitError,
+                InternalServerError,
+            ) as exc:
+                last_error = exc
+            except OpenAIError as exc:
+                raise LLMUnavailableError(
+                    "임베딩 호출이 실패했습니다 (재시도 대상 아님)."
+                ) from exc
+        raise LLMUnavailableError("임베딩 호출이 재시도 후에도 실패했습니다.") from last_error

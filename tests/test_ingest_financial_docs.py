@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.rag.embedding import FinancialEmbedder
 from scripts.ingest_financial_docs import (
     _ID_MAX_LENGTH,
+    _INGEST_EMBEDDING_TIMEOUT_SECONDS,
     _SOURCE_MAX_LENGTH,
     ingest,
     parse_args,
@@ -107,6 +108,41 @@ def test_reingest_deletes_previous_chunks_by_source_once(
     assert len(insert_calls) > 1  # 여러 Chunk가 생기는 긴 문서
     assert all(call[1][2] == "guide.txt" for call in insert_calls)  # source 컬럼
     assert connection.closed is True
+
+    get_settings.cache_clear()
+
+
+def test_ingest_uses_longer_embedding_timeout_than_realtime_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """대량 배치(최대 100 Chunk)를 보내는 이 스크립트는 FINANCE_QA 실시간 경로의
+    `llm_timeout_seconds`(6초)가 아니라 별도의 더 긴 타임아웃을 써야 한다(PR #70 리뷰 5).
+    """
+
+    connection = _FakeConnection()
+    recorded_kwargs: list[dict[str, object]] = []
+
+    async def fake_connect(_: str) -> _FakeConnection:
+        return connection
+
+    class _FakeEmbedder:
+        def __init__(self, **kwargs: object) -> None:
+            recorded_kwargs.append(kwargs)
+
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            return [[0.0, 0.0] for _ in texts]
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test")
+    get_settings.cache_clear()
+    monkeypatch.setattr("scripts.ingest_financial_docs.asyncpg.connect", fake_connect)
+    monkeypatch.setattr("scripts.ingest_financial_docs.FinancialEmbedder", _FakeEmbedder)
+
+    document = tmp_path / "guide.txt"
+    document.write_text("금융 문서 본문입니다.", encoding="utf-8")
+
+    asyncio.run(ingest(document, source="guide.txt", dry_run=False))
+
+    assert recorded_kwargs[0]["timeout_seconds"] == _INGEST_EMBEDDING_TIMEOUT_SECONDS
 
     get_settings.cache_clear()
 

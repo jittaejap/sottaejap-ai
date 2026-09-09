@@ -6,6 +6,7 @@ from typing import Any
 import asyncpg
 import pytest
 
+from app.core.llm import LLMNotConfiguredError, LLMUnavailableError
 from app.rag.retriever import (
     FinancialRetriever,
     RetrieverUnavailableError,
@@ -16,12 +17,19 @@ from app.rag.retriever import (
 class FakeEmbedder:
     """실제 OpenAI 호출 없이 고정된 벡터를 돌려주는 테스트용 Embedder."""
 
-    def __init__(self, vector: list[float] | None = [0.1, 0.2, 0.3]) -> None:
+    def __init__(
+        self,
+        vector: list[float] | None = [0.1, 0.2, 0.3],
+        error: Exception | None = None,
+    ) -> None:
         self.vector = vector
+        self.error = error
         self.queries: list[str] = []
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         self.queries.extend(texts)
+        if self.error is not None:
+            raise self.error
         if self.vector is None:
             return []
         return [self.vector]
@@ -112,3 +120,19 @@ def test_search_wraps_connection_failure() -> None:
 
     with pytest.raises(RetrieverUnavailableError):
         asyncio.run(FinancialRetriever(pool, FakeEmbedder()).search("질문"))
+
+
+def test_search_wraps_embedding_unavailable_as_retriever_unavailable() -> None:
+    """임베딩 호출 실패(#65)가 "AI 전체 장애"가 아니라 검색 실패로 흡수돼야 한다."""
+
+    embedder = FakeEmbedder(error=LLMUnavailableError("임베딩 호출이 실패했습니다."))
+
+    with pytest.raises(RetrieverUnavailableError):
+        asyncio.run(FinancialRetriever(FakePool(), embedder).search("질문"))
+
+
+def test_search_wraps_embedding_not_configured_as_retriever_unavailable() -> None:
+    embedder = FakeEmbedder(error=LLMNotConfiguredError("OPENAI_API_KEY가 없습니다."))
+
+    with pytest.raises(RetrieverUnavailableError):
+        asyncio.run(FinancialRetriever(FakePool(), embedder).search("질문"))

@@ -7,6 +7,7 @@ from app.agent.handlers.base import HandlerContext
 from app.agent.prompt import HAEYO_RULE
 from app.agent.state import AgentState
 from app.agent.tool_registry import ToolRegistry
+from app.rag.retriever import RetrieverUnavailableError
 from app.schemas.common import TaskType
 from app.schemas.tool import ToolName, ToolRequest, ToolResult
 from tests.conftest import FakeLLM
@@ -77,6 +78,31 @@ def test_finance_qa_says_cannot_confirm_without_evidence(fake_llm: FakeLLM) -> N
     assert "투자 권유" in instruction
     assert HAEYO_RULE in instruction  # #51 — 근거없음 경로도 반말 사례가 확인됐다
     assert response.tool_results[0].success is False
+
+
+def test_finance_qa_falls_back_to_no_evidence_reply_when_embedding_unavailable(
+    fake_llm: FakeLLM,
+) -> None:
+    """임베딩 실패(#65)가 `fallback: true` 전체 장애가 아니라 근거없음 답으로 흡수돼야 한다."""
+
+    registry = ToolRegistry()
+
+    async def handler(request: ToolRequest) -> ToolResult:
+        raise RetrieverUnavailableError("금융 문서 검색을 위한 임베딩 호출에 실패했습니다.")
+
+    registry.register(ToolName.FINANCIAL_RAG, handler)
+    context = HandlerContext(
+        state=AgentState(message="예금자보호 한도는 얼마인가요"),
+        llm=fake_llm,  # type: ignore[arg-type]
+        tools=registry,
+    )
+
+    response = asyncio.run(finance_qa.handle(context))
+
+    instruction = fake_llm.calls[0][0]
+    assert "확인할 수 없다" in instruction
+    assert response.tool_results[0].success is False
+    assert response.fallback is False
 
 
 def test_finance_qa_ignores_malformed_evidence_items(fake_llm: FakeLLM) -> None:
