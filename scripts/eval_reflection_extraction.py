@@ -9,8 +9,12 @@
 
 두 가지를 함께 잰다. 한쪽만 보면 반대쪽이 조용히 망가진다.
 
-- **재현율** — 문장에 분명히 있는 값을 뽑아냈는가
+- **재현율** — 문장에 분명히 있는 값을 뽑아냈는가 (**전건이어야 한다**)
 - **과잉추론** — 문장에 없는 값을 지어냈는가 (**0이어야 한다**)
+
+종료 코드는 **두 축을 함께** 본다. 재현율 전건 · 과잉추론 0 · 호출 오류 0이 모두
+성립할 때만 0이고, 하나라도 어긋나면 1이다. 재현율을 빼면 모델이 전부 null로 답해도
+성공으로 끝나 이 스크립트가 지키려던 것이 사라진다 (#39 완료 조건 — 두 축을 함께 잰다).
 
 과잉추론이 왜 더 위험한가: server `RetrospectChatSupport.nextStep()`은 값이 차 있으면
 그 단계를 묻지 않는다. 지어낸 값은 화면에 한 번 잘못 뜨는 정도가 아니라 **되묻기 자체를
@@ -155,15 +159,21 @@ def grade(case: Case, got: ReflectionExtraction) -> Result:
     return Result(case, hits, wanted, misses, over)
 
 
-async def _run_case(extractor: ReflectionExtractor, case: Case) -> Result | BaseException:
+async def _run_case(extractor: ReflectionExtractor, case: Case) -> Result | Exception:
+    """한 문장을 재고, LLM·네트워크 실패는 멈추지 않고 모아서 보고한다.
+
+    ``BaseException``이 아니라 ``Exception``만 잡는다. ``KeyboardInterrupt``와 asyncio
+    취소까지 삼키면 긴 평가를 중간에 끊을 수 없고, 끊은 것이 "평가 오류 1건"으로 둔갑한다.
+    """
+
     try:
         turn = await extractor.extract(case.text, case.last_question)
-    except BaseException as error:  # noqa: BLE001 — 한 문장 실패로 전체를 멈추지 않는다
+    except Exception as error:  # noqa: BLE001 — 한 문장 실패로 전체를 멈추지 않는다
         return error
     return grade(case, turn.extraction)
 
 
-async def run_once(extractor: ReflectionExtractor) -> tuple[list[Result], list[BaseException], float]:
+async def run_once(extractor: ReflectionExtractor) -> tuple[list[Result], list[Exception], float]:
     """세트 전체를 한 번 돌린다. 지연도 함께 잰다 (NFR-04 6초 예산 참고용)."""
 
     started = time.perf_counter()
@@ -171,12 +181,17 @@ async def run_once(extractor: ReflectionExtractor) -> tuple[list[Result], list[B
     elapsed = time.perf_counter() - started
 
     results = [item for item in graded if isinstance(item, Result)]
-    errors = [item for item in graded if isinstance(item, BaseException)]
+    errors = [item for item in graded if isinstance(item, Exception)]
     return results, errors, elapsed
 
 
-def report(results: list[Result], errors: list[BaseException], elapsed: float) -> bool:
-    """실측치를 찍고 과잉추론이 0인지 돌려준다."""
+def report(results: list[Result], errors: list[Exception], elapsed: float) -> bool:
+    """실측치를 찍고 이번 회차가 통과인지 돌려준다.
+
+    통과 조건은 **세 가지 전부**다 — 재현율 전건 · 과잉추론 0 · 호출 오류 0. 과잉추론만
+    보면 모델이 모든 항목을 null·UNKNOWN으로 돌려줘도 성공으로 끝난다. 그러면 프롬프트나
+    모델 판이 바뀌어 재현율이 0%가 되어도 이 스크립트가 아무 말을 하지 않는다.
+    """
 
     hits = sum(result.hits for result in results)
     wanted = sum(result.wanted for result in results)
@@ -199,13 +214,15 @@ def report(results: list[Result], errors: list[BaseException], elapsed: float) -
     recall = f"{hits}/{wanted}" + (f" ({hits / wanted:.1%})" if wanted else "")
     print()
     print(f"  문장         {len(results)}개 (오류 {len(errors)}개)")
-    print(f"  재현율       {recall}")
+    print(f"  재현율       {recall}   {'OK' if hits == wanted else '← 전건이어야 한다'}")
     print(f"  과잉추론     {over}/{nullable} 항목   {'OK' if over == 0 else '← 0이어야 한다'}")
     print(f"  소요         {elapsed:.1f}초 (동시 실행)")
-    return over == 0 and not errors
+    return hits == wanted and over == 0 and not errors
 
 
-async def main() -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """인자를 읽는다. ``--repeat 0``은 한 문장도 재지 않고 성공으로 끝나므로 막는다."""
+
     parser = argparse.ArgumentParser(description="회고 추출 품질 평가 (A6)")
     parser.add_argument(
         "--repeat",
@@ -213,7 +230,14 @@ async def main() -> int:
         default=1,
         help="같은 세트를 몇 번 돌릴지. LLM 응답이 흔들리는 폭을 볼 때 2 이상을 준다",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.repeat < 1:
+        parser.error("--repeat는 1 이상이어야 합니다 (0이면 아무것도 재지 않습니다).")
+    return args
+
+
+async def main() -> int:
+    args = parse_args()
 
     if not get_settings().openai_api_key:
         print("OPENAI_API_KEY가 없습니다. 이 스크립트는 실제 LLM을 부릅니다.", file=sys.stderr)
