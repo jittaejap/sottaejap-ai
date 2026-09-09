@@ -9,7 +9,12 @@ import pytest
 
 from app.core.config import get_settings
 from app.rag.embedding import FinancialEmbedder
-from scripts.ingest_financial_docs import ingest, parse_args
+from scripts.ingest_financial_docs import (
+    _ID_MAX_LENGTH,
+    _SOURCE_MAX_LENGTH,
+    ingest,
+    parse_args,
+)
 
 
 def _fail_if_called(*args: object, **kwargs: object) -> None:
@@ -134,19 +139,28 @@ def test_blank_source_is_rejected(value: str, monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_too_long_source_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    """V8의 `VARCHAR(255)`를 넘는 식별자는 적재 전에 멈춘다."""
+    """`chunk_id`가 `VARCHAR(255)`를 넘길 식별자는 적재 전에 멈춘다 (PR #64 리뷰 3차).
+
+    상한은 255가 아니라 `chunk_id = f"{source}-{index}"`의 접미사 자리를 뺀 값이다.
+    255자 source는 첫 Chunk의 `chunk_id`부터 257자가 되어 INSERT에서 걸린다.
+    """
 
     monkeypatch.setattr(
-        "sys.argv", ["ingest_financial_docs.py", "doc.txt", "--source", "가" * 256]
+        "sys.argv",
+        ["ingest_financial_docs.py", "doc.txt", "--source", "가" * (_SOURCE_MAX_LENGTH + 1)],
     )
 
     with pytest.raises(SystemExit):
         parse_args()
 
     monkeypatch.setattr(
-        "sys.argv", ["ingest_financial_docs.py", "doc.txt", "--source", "가" * 255]
+        "sys.argv",
+        ["ingest_financial_docs.py", "doc.txt", "--source", "가" * _SOURCE_MAX_LENGTH],
     )
-    assert len(parse_args().source) == 255
+    source = parse_args().source
+    assert len(source) == _SOURCE_MAX_LENGTH
+    # 통과한 경계값은 실제로 INSERT 가능해야 한다 — 마지막 Chunk까지 255자 안이다.
+    assert len(f"{source}-9999999") <= _ID_MAX_LENGTH
 
 
 def test_source_is_stripped(monkeypatch: pytest.MonkeyPatch) -> None:
