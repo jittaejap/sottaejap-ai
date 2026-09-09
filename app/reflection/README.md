@@ -30,8 +30,10 @@ Validate: 미확정 필드와 추가 질문 필요 여부 확인
   ↓
 사용자 검증
   ↓
-ReflectionTool을 통해 Spring에 저장
+Spring이 저장 (`POST /retrospects`)
 ```
+
+저장은 이 모듈도 REFLECTION Handler도 하지 않는다. Handler는 후보값을 `/chat` 응답에 실을 뿐이고, 사용자가 확인한 뒤 클라이언트가 부르는 `POST /retrospects`가 저장한다 (05 §3 · E-18).
 
 ## UNKNOWN 처리
 

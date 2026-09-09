@@ -44,6 +44,7 @@ ChatResponse
 - `handlers/__init__.py`: Task별 Handler를 연결하는 `HANDLERS` 레지스트리
 - `handlers/cluster_naming.py`: `TaskType.CLUSTER_NAMING` — Spring이 전달한 묶음 정보로 12자 이내 이름을 만든다
 - `handlers/finance_qa.py`: `TaskType.FINANCE_QA` — `FINANCIAL_RAG` Tool로 근거를 찾아 그 안에서만 답하고, 없으면 모른다고 답한다
+- `handlers/reflection.py`: `TaskType.REFLECTION` — `step`에 맞춰 인사 또는 후보값 추출을 하고, 확정값과 병합해 다음 질문을 붙인다
 - `prompt.py`: 시스템 및 Agent 프롬프트
 - `state.py`: 요청 한 건에 필요한 현재 Task, 구조화 상태, 최소 최근 대화
 - `tool_registry.py`: Agent에 노출할 Tool 이름과 Handler 등록·조회, Spring pull Tool 5종 기본 배선(`build_default_registry`)
