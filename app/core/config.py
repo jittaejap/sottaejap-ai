@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     llm_timeout_seconds: float = 6.0
     spring_base_url: str = "http://localhost:8080"
-    spring_timeout_seconds: float = 10.0
+    # AI_TIMEOUT_MS 15초 예산 안에서 ANALYSIS·ACTION_PLAN 최악(LLM 6초 x 재시도
+    # 포함 2회)이 들어가려면 이 값이 3초여야 한다 — 10초면 3 + 12 = 15초 예산을
+    # 넘긴다. 같은 EC2 안 Spring 호출은 실측상 수십 ms라 3초도 넉넉하다(#65).
+    spring_timeout_seconds: float = 3.0
     internal_shared_secret: str | None = Field(default=None, repr=False)
     database_url: str | None = Field(default=None, repr=False)
     ai_server_host: str = "0.0.0.0"

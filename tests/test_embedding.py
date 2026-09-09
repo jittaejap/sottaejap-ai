@@ -153,3 +153,80 @@ def test_embed_wraps_api_error() -> None:
 
     with pytest.raises(LLMUnavailableError):
         asyncio.run(embedder.embed(["텍스트"]))
+
+
+def test_embed_retries_once_on_timeout_then_succeeds() -> None:
+    """`LLMClient`와 같은 정책 — 일시적 오류는 1회 재시도 후 성공하면 그대로 반환한다(#65)."""
+
+    class FlakyEmbeddings:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def create(self, **_: object) -> object:
+            self.calls += 1
+            if self.calls == 1:
+                raise APITimeoutError(
+                    request=httpx.Request("POST", "https://api.openai.com/v1/embeddings")
+                )
+            return SimpleNamespace(data=[SimpleNamespace(embedding=[1.0, 2.0], index=0)])
+
+    class FlakyOpenAI:
+        def __init__(self) -> None:
+            self.embeddings = FlakyEmbeddings()
+
+    fake = FlakyOpenAI()
+    embedder = FinancialEmbedder(
+        settings=Settings(openai_api_key="k"), client=fake  # type: ignore[arg-type]
+    )
+
+    result = asyncio.run(embedder.embed(["텍스트"]))
+
+    assert result == [[1.0, 2.0]]
+    assert fake.embeddings.calls == 2
+
+
+def test_embed_does_not_retry_permanent_error() -> None:
+    """403 `model_not_found` 같은 영구 오류는 재시도 없이 바로 실패해야 한다(#65).
+
+    운영 실측(이슈 #65)에서 이 구분이 없어 SDK 기본 재시도가 걸려 2.8초까지
+    응답이 늘어졌다 — 재시도해도 결과는 똑같이 실패였다.
+    """
+    from openai import PermissionDeniedError
+
+    class DeniedEmbeddings:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def create(self, **_: object) -> object:
+            self.calls += 1
+            raise PermissionDeniedError(
+                message="model_not_found",
+                response=httpx.Response(
+                    403, request=httpx.Request("POST", "https://api.openai.com/v1/embeddings")
+                ),
+                body=None,
+            )
+
+    class DeniedOpenAI:
+        def __init__(self) -> None:
+            self.embeddings = DeniedEmbeddings()
+
+    fake = DeniedOpenAI()
+    embedder = FinancialEmbedder(
+        settings=Settings(openai_api_key="k"), client=fake  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(LLMUnavailableError):
+        asyncio.run(embedder.embed(["텍스트"]))
+
+    assert fake.embeddings.calls == 1
+
+
+def test_client_uses_configured_timeout_and_disables_sdk_retries() -> None:
+    """SDK 기본 재시도·긴 타임아웃 대신 `llm_timeout_seconds`와 자체 1회 재시도를 쓴다(#65)."""
+
+    embedder = FinancialEmbedder(settings=Settings(openai_api_key="k", llm_timeout_seconds=6.0))
+
+    assert embedder._client is not None  # type: ignore[attr-defined]
+    assert embedder._client.timeout == 6.0  # type: ignore[attr-defined]
+    assert embedder._client.max_retries == 0  # type: ignore[attr-defined]

@@ -15,6 +15,7 @@ from typing import Any, Protocol
 
 import asyncpg
 
+from app.core.llm import LLMNotConfiguredError, LLMUnavailableError
 from app.rag.embedding import FinancialEmbedder
 from app.rag.schemas import FinancialChunk, SearchResult
 
@@ -28,11 +29,14 @@ LIMIT $2
 
 
 class RetrieverUnavailableError(RuntimeError):
-    """저장소에 닿지 못했다 — DB가 내려갔거나 `financial_chunks`가 아직 없다.
+    """저장소나 임베딩에 닿지 못했다 — DB가 내려갔거나 `financial_chunks`가 아직
+    없거나, 임베딩 호출이 실패했다(#65).
 
     `HandlerContext.call_tool`이 이걸 흡수해 `ToolResult(success=False)`로 바꾸고,
     FINANCE_QA는 근거 없음 경로로 내려가 "확인할 수 없다"고 답한다 (FR-12-02).
-    asyncpg 예외를 그대로 올리면 흡수 목록에 없어 `/chat`이 500이 된다.
+    asyncpg 예외나 임베딩의 `LLMUnavailableError`를 그대로 올리면 흡수 목록에
+    없어 `/chat`이 500이 되거나(asyncpg) `SingleAgent`의 전체 장애 폴백으로
+    잘못 분류된다(임베딩 — 검색 실패일 뿐인데 "AI 장애" 배너가 뜬다).
     """
 
 
@@ -57,7 +61,14 @@ class FinancialRetriever:
         if top_k <= 0:
             raise ValueError("top_k는 1 이상이어야 합니다.")
 
-        vectors = await self._embedder.embed([query])
+        try:
+            vectors = await self._embedder.embed([query])
+        except (LLMNotConfiguredError, LLMUnavailableError) as exc:
+            # 임베딩 실패는 "AI 전체 장애"가 아니라 이 검색 하나의 실패다(#65) —
+            # RetrieverUnavailableError로 다시 던져 위 docstring의 흡수 경로를 타게 한다.
+            raise RetrieverUnavailableError(
+                "금융 문서 검색을 위한 임베딩 호출에 실패했습니다."
+            ) from exc
         if not vectors:
             return []
 
