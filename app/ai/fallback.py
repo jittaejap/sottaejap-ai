@@ -23,6 +23,14 @@ ANALYSIS_UNAVAILABLE_REPLY = (
 ANALYSIS_OFF_TOPIC_REPLY = (
     "소비 분석에 대한 질문만 답할 수 있어요. 금융 상식은 금융 질문 채널에서 물어봐 주세요."
 )
+# `fallback=True`가 아니다 — 이건 장애가 아니라 정상적인 "근거 없음" 처리다(#65
+# E-108과 같은 구분). LLM을 안 부르고 이 문장을 코드로 바로 돌려준다(#74) —
+# NO_EVIDENCE_INSTRUCTION으로 지시해도 공통 SYSTEM_PROMPT의 few-shot 예시
+# ("...소비 흐름을 설명하기 어려워요")를 그대로 본떠 답하는 걸 운영 실측
+# 5/5로 못 막았다(docs/DEVELOPMENT.md §13 CLUSTER_NAMING과 같은 패턴).
+FINANCE_QA_NO_EVIDENCE_REPLY = (
+    "확인할 수 있는 금융 자료를 찾지 못했어요. 다른 질문으로 다시 물어봐 주세요."
+)
 
 REASON_SENTENCES: dict[str, str] = {
     "TIMESLOT_OUTLIER": "평소와 다른 시간대의 소비였어요.",
