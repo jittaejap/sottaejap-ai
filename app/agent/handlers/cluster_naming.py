@@ -9,6 +9,10 @@ state) LLM이 "이름만 답하라"는 지시를 무시하고 SYSTEM_PROMPT의 f
 아니라 입력 자체가 없는 경우라 `app/ai/fallback.py`의 `fallback_reply()` 템플릿을
 그대로 재사용해 LLM 호출 자체를 건너뛴다 — ACTION_PLAN의 `NO_MATCHING_SUGGESTION_REPLY`
 와 같은 이유로 `fallback` 플래그는 세우지 않는다(AI 장애가 아니라 정상적인 빈 입력 처리).
+
+PR #63 리뷰에서 지적된 대로, 공백만 있는 값(`"   "`)은 문자열 타입 검사만으로는
+안 걸러져서 위 사고가 재현될 수 있었다 — `cluster_key`는 trim하고, `sample_merchants`는
+trim 후 빈 문자열을 제외한다.
 """
 
 import json
@@ -62,13 +66,14 @@ def _cluster_info(state: dict[str, Any]) -> dict[str, Any]:
     cluster_key = state.get("cluster_key")
     if not isinstance(cluster_key, str):
         cluster_key = ""
+    cluster_key = cluster_key.strip()
 
     sample_merchants = state.get("sample_merchants")
     if isinstance(sample_merchants, list):
         sample_merchants = [
             merchant
             for merchant in sample_merchants
-            if isinstance(merchant, str)
+            if isinstance(merchant, str) and merchant.strip()
         ]
     else:
         sample_merchants = []

@@ -114,6 +114,31 @@ def test_cluster_naming_skips_llm_when_no_signal(fake_llm: FakeLLM) -> None:
     assert response.fallback is False
 
 
+def test_cluster_naming_treats_whitespace_only_values_as_absent(fake_llm: FakeLLM) -> None:
+    """PR #63 리뷰 지적 — 공백만 있는 값은 문자열 타입 검사만으로는 안 걸러진다.
+
+    수정 전에는 {"cluster_key": "   "}나 {"sample_merchants": ["   "]}가 "빈 입력"
+    판정을 피해 그대로 LLM을 불렀고, 모델 입장에서는 진짜 빈 입력과 다를 게 없어
+    같은 문장 잘림 사고가 재현될 수 있었다.
+    """
+
+    from app.ai.fallback import fallback_reply
+
+    cases = (
+        {"cluster_key": "   "},
+        {"sample_merchants": ["   "]},
+        {"sample_merchants": [""]},
+        {"cluster_key": "  ", "sample_merchants": ["   ", ""]},
+    )
+    for state in cases:
+        context = _context(fake_llm, state)
+
+        response = asyncio.run(cluster_naming.handle(context))
+
+        assert response.reply == fallback_reply(TaskType.CLUSTER_NAMING, state)
+        assert fake_llm.calls == []
+
+
 def test_cluster_naming_calls_llm_when_only_merchants_present(fake_llm: FakeLLM) -> None:
     """cluster_key가 비어도 sample_merchants가 있으면 정상적으로 LLM을 부른다."""
 
