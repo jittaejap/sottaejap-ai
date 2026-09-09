@@ -49,7 +49,7 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
     evidence = _evidence(result.data)
 
     instruction = (
-        f"{FINANCIAL_RAG_PROMPT}\n"
+        f"{FINANCIAL_RAG_PROMPT}\n{HAEYO_RULE}\n"
         f"금융 자료: {json.dumps(evidence, ensure_ascii=False)}\n{HAEYO_RULE}"
         if evidence
         else NO_EVIDENCE_INSTRUCTION
