@@ -8,6 +8,7 @@ import pytest
 
 from app.core.config import Settings
 from app.core.llm import LLMNotConfiguredError, LLMUnavailableError
+from app.rag.keyword_index import KeywordIndex
 from app.rag.retriever import (
     FinancialRetriever,
     RetrieverUnavailableError,
@@ -265,3 +266,150 @@ def test_search_wraps_embedding_not_configured_as_retriever_unavailable() -> Non
 
     with pytest.raises(RetrieverUnavailableError):
         asyncio.run(FinancialRetriever(FakePool(), embedder).search("질문"))
+
+
+# --- 하이브리드 검색(BM25 + 벡터, #78) ---
+#
+# "적금이란"처럼 코퍼스에 근거가 있는데도 벡터 코사인 점수가 임계값(#28)
+# 근처에서 갈려 차단되는 사례가 실측으로 확인됐다. BM25(형태소 분석 기반
+# 키워드 매칭)를 더해 RRF로 융합하면 이런 경계 케이스를 구조적으로 줄일 수
+# 있다 — 아래 테스트는 그 융합 로직 자체를 검증한다.
+
+
+def _filler_rows(count: int) -> list[dict[str, Any]]:
+    """BM25는 어떤 용어가 코퍼스 전체에 다 있으면(IDF≈0) 구분을 못 한다 — 무관한
+    문서를 채워 목표 용어가 코퍼스 일부에만 있게 한다. 코사인 점수는 최소
+    하한(0.25)보다도 낮게 둬 최종 결과에 절대 섞여 들지 않게 한다.
+    """
+
+    return [
+        {
+            "chunk_id": f"filler-{i}",
+            "content": f"무관한 내용 {i}입니다",
+            "source": "출처",
+            "metadata": {},
+            "score": 0.05,
+        }
+        for i in range(count)
+    ]
+
+
+def test_hybrid_search_rescues_result_below_min_score_but_above_rescue_floor() -> None:
+    """벡터 단독이면 임계값 미달로 버려질 결과를, BM25가 근거를 찾으면 살린다."""
+
+    rows = [
+        {
+            "chunk_id": "c1",
+            "content": "적금 적금 적금 목돈 마련을 위한 저축 상품",
+            "source": "출처",
+            "metadata": {},
+            "score": 0.3,  # min_score(0.48) 미만, rescue floor(0.25) 이상
+        },
+        *_filler_rows(3),
+    ]
+    keyword_index = KeywordIndex.build([(row["chunk_id"], row["content"]) for row in rows])
+
+    results = asyncio.run(
+        FinancialRetriever(
+            FakePool(rows=rows),
+            FakeEmbedder(),
+            settings=Settings(financial_rag_min_score=0.48),
+            keyword_index=keyword_index,
+        ).search("적금이란")
+    )
+
+    assert "c1" in [r.chunk.chunk_id for r in results]
+
+
+def test_hybrid_search_still_rejects_result_below_rescue_floor() -> None:
+    """BM25가 뭔가를 찾아도, 코사인 자체가 너무 낮으면(완전 무관) 통과시키지 않는다.
+
+    BM25 원점수는 코퍼스가 작으면 절대값만으로 못 믿는다(#78) — "오늘"처럼
+    흔한 명사가 특정 Chunk에 몰려 있으면 무관한 질문도 점수가 크게 나올 수
+    있다. 그래서 BM25로 살아난 후보도 자기 코사인 점수가 rescue floor(0.25)는
+    넘어야 한다.
+    """
+
+    rows = [
+        {
+            "chunk_id": "c1",
+            "content": "김치찌개는 김치와 돼지고기로 끓이는 찌개",
+            "source": "출처",
+            "metadata": {},
+            "score": 0.1,  # rescue floor(0.25) 미만
+        }
+    ]
+    keyword_index = KeywordIndex.build([("c1", rows[0]["content"])])
+
+    results = asyncio.run(
+        FinancialRetriever(
+            FakePool(rows=rows),
+            FakeEmbedder(),
+            settings=Settings(financial_rag_min_score=0.48),
+            keyword_index=keyword_index,
+        ).search("김치찌개는 뭐임")
+    )
+
+    assert results == []
+
+
+def test_hybrid_search_breaks_rrf_tie_with_bm25_raw_score() -> None:
+    """벡터·BM25가 서로 다른 후보를 1등으로 내 RRF가 동점이면 BM25 원점수로 가른다.
+
+    실측(#78)에서 벡터 전용 1등이 완전히 엉뚱한 결과였고, BM25가 찾은 후보가
+    실제로 더 나은 근거였다 — 이 우선순위를 그대로 코드로 고정한다.
+    """
+
+    rows = [
+        {
+            "chunk_id": "vector-top",
+            "content": "완전히 다른 내용입니다",
+            "source": "출처",
+            "metadata": {},
+            "score": 0.5,  # min_score 이상 — 자체로도 통과 조건은 만족한다
+        },
+        {
+            "chunk_id": "bm25-top",
+            "content": "적금 적금 적금 목돈 마련을 위한 저축 상품",
+            "source": "출처",
+            "metadata": {},
+            "score": 0.3,  # min_score 미만, rescue floor 이상
+        },
+        *_filler_rows(3),
+    ]
+    keyword_index = KeywordIndex.build([(row["chunk_id"], row["content"]) for row in rows])
+
+    results = asyncio.run(
+        FinancialRetriever(
+            FakePool(rows=rows),
+            FakeEmbedder(),
+            settings=Settings(financial_rag_min_score=0.48),
+            keyword_index=keyword_index,
+        ).search("적금이란", top_k=1)
+    )
+
+    assert [r.chunk.chunk_id for r in results] == ["bm25-top"]
+
+
+def test_search_without_keyword_index_uses_vector_only_path() -> None:
+    """`keyword_index`를 안 주면 기존 벡터 전용 동작 그대로다(하이브리드는 옵트인)."""
+
+    rows = [
+        {
+            "chunk_id": "c1",
+            "content": "적금 적금 적금 목돈 마련을 위한 저축 상품",
+            "source": "출처",
+            "metadata": {},
+            "score": 0.3,
+        }
+    ]
+
+    results = asyncio.run(
+        FinancialRetriever(
+            FakePool(rows=rows),
+            FakeEmbedder(),
+            settings=Settings(financial_rag_min_score=0.48),
+        ).search("적금이란")
+    )
+
+    assert results == []  # 하이브리드가 아니므로 rescue 없이 그대로 하한 미달
