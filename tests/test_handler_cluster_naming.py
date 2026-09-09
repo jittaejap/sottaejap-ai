@@ -66,8 +66,11 @@ def test_cluster_naming_uses_first_line_and_removes_quotes(
     replies = (
         '  “스벅단골”\n이 이름을 추천합니다.  ',
         "스벅단골\r\n이 이름을 추천합니다.",
+        "스벅단골\t\n이 이름을 추천합니다.",
+        "스벅단골\xa0\n이 이름을 추천합니다.",
         "‘스벅단골’",
         "「스벅단골」",
+        "“ 스벅단골 ”",
     )
 
     for reply in replies:

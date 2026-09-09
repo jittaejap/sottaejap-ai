@@ -30,7 +30,9 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
         (await ctx.generate(instruction))
         .strip()
         .partition("\n")[0]
-        .strip(" \r\"'“”‘’「」")
+        .strip()
+        .strip("\"'“”‘’「」")
+        .strip()
     )
 
     return ChatResponse(
