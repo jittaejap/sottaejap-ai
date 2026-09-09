@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 from app.agent.handlers.base import HandlerContext, tool_receipt
+from app.ai.fallback import ACTION_PLAN_UNAVAILABLE_REPLY
 from app.schemas.chat import ChatResponse
 from app.schemas.tool import ToolName
 
@@ -16,6 +17,15 @@ NO_MATCHING_SUGGESTION_REPLY = (
 ACTION_PLAN_INSTRUCTION = (
     "아래 제안 정보를 바탕으로 왜 이 제안을 하게 됐는지 자연스러운 대화체로 "
     "설명하세요. 제공된 값에 없는 숫자나 이유를 새로 만들지 마세요."
+)
+_PROMPT_FIELDS = (
+    "behaviorName",
+    "monthlyTotalAmount",
+    "avgAmount",
+    "txCount",
+    "adjustCount",
+    "expectedSaving",
+    "reason",
 )
 
 
@@ -30,12 +40,18 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
         )
 
     result = await ctx.call_tool(ToolName.ACTION_PLAN, {})
+    receipt = tool_receipt(result)
+    if not result.success:
+        return ChatResponse(
+            reply=ACTION_PLAN_UNAVAILABLE_REPLY,
+            tool_results=[receipt],
+        )
+
     matching_suggestions = [
-        suggestion
+        _prompt_suggestion(suggestion)
         for suggestion in _suggestions(result.data)
         if _matches_id(suggestion.get("id"), suggestion_ids)
     ]
-    receipt = tool_receipt(result)
     if not matching_suggestions:
         return ChatResponse(
             reply=NO_MATCHING_SUGGESTION_REPLY,
@@ -84,3 +100,13 @@ def _matches_id(value: Any, suggestion_ids: set[int]) -> bool:
         and not isinstance(value, bool)
         and value in suggestion_ids
     )
+
+
+def _prompt_suggestion(suggestion: dict[str, Any]) -> dict[str, Any]:
+    """제안 설명에 필요한 사용자용 필드만 프롬프트에 남긴다."""
+
+    return {
+        field: suggestion[field]
+        for field in _PROMPT_FIELDS
+        if field in suggestion
+    }
