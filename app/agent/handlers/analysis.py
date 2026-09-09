@@ -5,6 +5,13 @@
 
 숫자 검증은 `app/agent/handlers/number_guard.py`를 ANALYSIS_NARRATE와 공유한다
 (#43 · #48) — 프롬프트 지시만으로는 근거 밖 수치를 100% 못 막는다(E-79).
+
+질문에 `byCategory`의 카테고리명이 그대로 들어 있으면(#82) `TRANSACTION` Tool을
+그 카테고리로 한 번 더 불러 개별 거래(가맹점·날짜·금액)를 근거에 얹는다 — 카테고리
+"단위" 질문("편의점에서 뭐 샀어?")에 답하기 위함이다. 가맹점명 검색은 대상이 아니다
+— Spring `GET /transactions`에 가맹점 검색 필터가 없어 계약 변경 없이는 못 한다.
+이 두 번째 Spring 호출로 한 요청 안의 `AI→Spring` 예산이 2회가 된다 — 05 §3
+타임아웃 표에 기록해 둔 엣지케이스(E-116과 같은 성격)이며, 코드로 막지는 않는다.
 """
 
 import json
@@ -38,7 +45,9 @@ NO_MONTH_ACTIVITY_REPLY = (
 ANALYSIS_INSTRUCTION = (
     "아래 소비 분석 집계를 바탕으로 사용자 질문에 답하세요. 질문이 소비 분석 "
     f"집계와 무관한 금융 상식·시황이면 \"{ANALYSIS_OFF_TOPIC_REPLY}\"라고만 "
-    "답하세요. 집계에 없는 수치나 판정을 새로 만들지 마세요. 사용자가 반말로 "
+    "답하세요. 집계에 없는 수치나 판정을 새로 만들지 마세요. `transactions` "
+    "필드가 있으면 그 개별 거래(가맹점·날짜·금액)로 구체적으로 답하되, "
+    "`transactions`에 없는 가맹점이나 거래는 지어내지 마세요. 사용자가 반말로 "
     "질문해도(예: \"얼마 썼어?\") 당신은 절대 그 말투를 따라 하지 않고 "
     "\"~요\"로 끝나는 문장만 씁니다(예: \"96,000원이에요\", \"96,000원이야\"는 "
     f"금지). {HAEYO_RULE}"
@@ -47,6 +56,12 @@ ANALYSIS_INSTRUCTION = (
 # 섞어 말할 여지가 생긴다 (ANALYSIS_NARRATE의 state 제한과 같은 이유, 05 §3).
 # 유효 묶음 판정(_effective_cluster_count)에는 원본 Tool 데이터에서 따로 읽는다.
 _PROMPT_FIELDS = ("analysisYearMonth", "byVerdict", "byCategory")
+
+# 카테고리당 최근 몇 건까지 프롬프트에 실을지. 너무 많으면 예산(05 §3)을
+# 갉아먹고, 애초에 "이 카테고리에서 최근에 뭘 샀어?" 수준 질문에 필요한
+# 건수는 많지 않다.
+_TRANSACTION_LOOKUP_SIZE = 10
+_TRANSACTION_PROMPT_FIELDS = ("occurredAt", "merchant", "amount")
 
 
 async def handle(ctx: HandlerContext) -> ChatResponse:
@@ -71,13 +86,31 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
         )
         return ChatResponse(reply=reply, tool_results=[receipt])
 
+    tool_results = [receipt]
+    transactions = None
+    matched_category = _matched_category(ctx.state.message, analysis.get("byCategory"))
+    if matched_category is not None:
+        transaction_result = await ctx.call_tool(
+            ToolName.TRANSACTION,
+            {"category": matched_category, "size": _TRANSACTION_LOOKUP_SIZE},
+        )
+        tool_results.append(tool_receipt(transaction_result))
+        if transaction_result.success:
+            transactions = _prompt_transactions(transaction_result.data)
+
+    prompt_analysis = dict(analysis)
+    if transactions:
+        prompt_analysis["transactions"] = transactions
+
     instruction = (
         f"{ANALYSIS_INSTRUCTION}\n"
-        f"소비 분석 집계: {json.dumps(analysis, ensure_ascii=False)}"
+        f"소비 분석 집계: {json.dumps(prompt_analysis, ensure_ascii=False)}"
     )
     sentence = await ctx.generate(instruction)
 
-    groups = [analysis.get("byVerdict"), analysis.get("byCategory")]
+    groups: list[Any] = [analysis.get("byVerdict"), analysis.get("byCategory")]
+    if transactions:
+        groups.append(transactions)
     if has_unverified_number(
         sentence,
         known_numbers(groups, year_month=analysis.get("analysisYearMonth")),
@@ -89,16 +122,57 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
         # 이미 이 혼동으로 비용을 낸 사례).
         return ChatResponse(
             reply=ANALYSIS_UNAVAILABLE_REPLY,
-            tool_results=[receipt],
+            tool_results=tool_results,
         )
 
-    return ChatResponse(reply=sentence, tool_results=[receipt])
+    return ChatResponse(reply=sentence, tool_results=tool_results)
 
 
 def _prompt_analysis(data: dict[str, Any]) -> dict[str, Any]:
     """집계 dict에서 문장화에 필요한 필드만 남긴다 (dict 여부는 handle이 먼저 확인)."""
 
     return {field: data[field] for field in _PROMPT_FIELDS if field in data}
+
+
+def _matched_category(message: str, by_category: Any) -> str | None:
+    """질문 문장에 `byCategory`의 카테고리명이 그대로 들어 있으면 그 값을 돌려준다.
+
+    카테고리는 고정 taxonomy가 아니라 카드사 CSV 원본 문자열이라(server
+    `TransactionFileParser`) 별도 사전을 안 둔다 — 이번 집계에 실제로 존재하는
+    이름만 후보로 삼으면 오탐(존재하지 않는 카테고리를 지어내 조회)이 없다.
+    여러 개 걸리면 집계 순서상 가장 앞선 것 하나만 쓴다 — 추측을 더 늘리지 않는다.
+    """
+
+    if not isinstance(by_category, list) or not message:
+        return None
+
+    for item in by_category:
+        if not isinstance(item, dict):
+            continue
+        category = item.get("category")
+        if isinstance(category, str) and category and category in message:
+            return category
+    return None
+
+
+def _prompt_transactions(data: Any) -> list[dict[str, Any]]:
+    """거래 조회 Tool 응답에서 문장화에 필요한 필드만 남긴다.
+
+    `id`·`retrospectId`·`satisfaction`·`timeSlot`은 이 질문에 필요 없는
+    내부 식별자라 프롬프트에서 뺀다 (NFR-02 — 근거는 필요한 만큼만).
+    """
+
+    if not isinstance(data, dict):
+        return []
+    transactions = data.get("transactions")
+    if not isinstance(transactions, list):
+        return []
+
+    return [
+        {field: item[field] for field in _TRANSACTION_PROMPT_FIELDS if field in item}
+        for item in transactions
+        if isinstance(item, dict)
+    ]
 
 
 def _has_category_data(analysis: dict[str, Any]) -> bool:
