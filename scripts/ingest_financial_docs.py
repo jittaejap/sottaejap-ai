@@ -14,9 +14,11 @@ UNIQUE 제약이 있고(V8), 재적재 전제는 `ON CONFLICT (chunk_id) DO UPDA
 한 번 정한 `source`는 그 문서에 계속 같은 값으로 쓴다. `chunk_id`·`source`는 V8에서
 `VARCHAR(255)`라 짧은 식별자를 쓴다.
 
-그래서 `--source`는 **필수**다. 기본값을 파일명으로 두면 빠뜨렸을 때 오류 없이 파일명으로
-들어가고, 그 행은 이후 올바른 값으로 재적재해도 `WHERE source = $1`에 걸리지 않아 영영
-남는다. 쓸 값은 `docs/DEVELOPMENT.md` §6의 문서 ↔ `source` 대응표가 정본이다.
+그래서 `--source`는 **필수**이고 빈 값도 받지 않는다. 기본값을 파일명으로 두면 빠뜨렸을 때
+오류 없이 파일명으로 들어가고, 그 행은 이후 올바른 값으로 재적재해도 `WHERE source = $1`에
+걸리지 않아 영영 남는다. `--source ""`는 한 발 더 나쁘다 — 빈 `source`로 적재되면 다음 문서를
+빈 값으로 넣을 때 `DELETE ... WHERE source = ''`가 앞 문서를 통째로 지운다.
+쓸 값은 `docs/DEVELOPMENT.md` §6의 문서 ↔ `source` 대응표가 정본이다.
 """
 
 import argparse
@@ -47,6 +49,25 @@ ON CONFLICT (chunk_id) DO UPDATE SET
 """
 
 
+# V8의 `financial_chunks.source`·`chunk_id`가 VARCHAR(255)다. `chunk_id`는 여기에
+# `-<번호>`가 더 붙으므로 상한에 가까운 source는 INSERT에서 걸린다 — 대응표의 값은
+# 20자 안팎이라 실제로 닿을 일이 없고, 닿으면 조용히 남지 않고 트랜잭션이 통째로 롤백된다.
+_SOURCE_MAX_LENGTH = 255
+
+
+def source_identifier(value: str) -> str:
+    """`--source` 값을 다듬고 검증한다 — 빈 값과 VARCHAR(255) 초과를 거부한다."""
+
+    source = value.strip()
+    if not source:
+        raise argparse.ArgumentTypeError("문서 식별자가 비어 있다")
+    if len(source) > _SOURCE_MAX_LENGTH:
+        raise argparse.ArgumentTypeError(
+            f"문서 식별자는 {_SOURCE_MAX_LENGTH}자 이하여야 한다 (현재 {len(source)}자)"
+        )
+    return source
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="금융 문서를 Chunk·Embedding해 financial_chunks에 적재한다"
@@ -55,6 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source",
         required=True,
+        type=source_identifier,
         help="문서 식별자. docs/DEVELOPMENT.md §6 대응표의 값을 쓴다 — 한 번 정하면 바꾸지 않는다",
     )
     parser.add_argument(

@@ -117,3 +117,43 @@ def test_source_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(SystemExit):
         parse_args()
+
+
+@pytest.mark.parametrize("value", ["", " ", "\t\n"])
+def test_blank_source_is_rejected(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--source ""`도 멈춘다 (PR #64 리뷰 2차).
+
+    `required=True`는 옵션의 존재만 본다. 빈 `source`로 적재되면 다음 문서를 빈 값으로
+    넣을 때 `DELETE ... WHERE source = ''`가 앞 문서를 통째로 지운다.
+    """
+
+    monkeypatch.setattr("sys.argv", ["ingest_financial_docs.py", "doc.txt", "--source", value])
+
+    with pytest.raises(SystemExit):
+        parse_args()
+
+
+def test_too_long_source_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """V8의 `VARCHAR(255)`를 넘는 식별자는 적재 전에 멈춘다."""
+
+    monkeypatch.setattr(
+        "sys.argv", ["ingest_financial_docs.py", "doc.txt", "--source", "가" * 256]
+    )
+
+    with pytest.raises(SystemExit):
+        parse_args()
+
+    monkeypatch.setattr(
+        "sys.argv", ["ingest_financial_docs.py", "doc.txt", "--source", "가" * 255]
+    )
+    assert len(parse_args().source) == 255
+
+
+def test_source_is_stripped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """앞뒤 공백은 떼고 쓴다 — 삭제 기준이 `WHERE source = $1`이라 공백 하나로 어긋난다."""
+
+    monkeypatch.setattr(
+        "sys.argv", ["ingest_financial_docs.py", "doc.txt", "--source", "  금융교과서-03-저축 "]
+    )
+
+    assert parse_args().source == "금융교과서-03-저축"
