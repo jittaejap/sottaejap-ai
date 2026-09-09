@@ -3,6 +3,9 @@
 LLM이 6초를 넘기거나 오류를 내면 Agent가 이 템플릿으로 `reply`를 채우고 `fallback=True`로
 응답한다. 여기서는 Spring이 `task_context.state`에 실어 보낸 값만 문장에 넣는다.
 집계에 없는 수치나 이유를 만들지 않는다 (NFR-02).
+
+일부 문구와 제약 상수는 Handler에서도 재사용한다. 이때는 같은 상황에 같은 응답을 쓰기
+위한 공용 계약이며 `fallback` 플래그와는 무관하다 (`ACTION_PLAN_UNAVAILABLE_REPLY`).
 """
 
 from typing import Any
