@@ -1,4 +1,9 @@
-"""검색된 금융 근거로 답변을 생성할 때 사용할 프롬프트."""
+"""검색된 금융 근거로 답변을 생성할 때 사용할 프롬프트.
+
+`app.rag`는 `app.agent`보다 아래 계층이라(CONTRIBUTING §7 의존 방향) `app.agent.prompt`의
+`HAEYO_RULE`을 여기서 import하지 않는다 — 순환 참조가 생긴다. 해요체 규칙은
+`app/agent/handlers/finance_qa.py`가 이 프롬프트를 쓸 때 이어붙인다.
+"""
 
 FINANCIAL_RAG_PROMPT = """제공된 금융 문서 근거 안에서만 답변하세요.
 근거가 부족하면 모른다고 말하세요. 근거 본문에 있는 수치와 조건은 그대로 전달하고,
