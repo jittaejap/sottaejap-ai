@@ -20,6 +20,9 @@ ACTION_PLAN_UNAVAILABLE_REPLY = (
 ANALYSIS_UNAVAILABLE_REPLY = (
     "지금은 AI 설명을 준비할 수 없어요. 소비 분석 화면의 집계 결과를 확인해 주세요."
 )
+ANALYSIS_OFF_TOPIC_REPLY = (
+    "소비 분석에 대한 질문만 답할 수 있어요. 금융 상식은 금융 질문 채널에서 물어봐 주세요."
+)
 
 REASON_SENTENCES: dict[str, str] = {
     "TIMESLOT_OUTLIER": "평소와 다른 시간대의 소비였어요.",

@@ -17,11 +17,12 @@ def _context(
     fake_llm: FakeLLM,
     state: dict[str, Any],
     registry: ToolRegistry | None = None,
+    message: str = "이번 달 배달 얼마나 썼어?",
 ) -> HandlerContext:
     return HandlerContext(
         state=AgentState(
             user_id="user-1",
-            message="이번 달 배달 얼마나 썼어?",
+            message=message,
             structured_state=state,
         ),
         llm=fake_llm,  # type: ignore[arg-type]
@@ -73,6 +74,20 @@ def test_analysis_instruction_uses_shared_haeyo_rule_constant() -> None:
     assert HAEYO_RULE in analysis.ANALYSIS_INSTRUCTION
 
 
+def test_analysis_instruction_forbids_mirroring_informal_question() -> None:
+    """사용자 질문 자체가 반말이면 HAEYO_RULE 한 줄만으로는 안 이긴다 (#66 실측).
+
+    "이번 달 배달 얼마나 썼어?"처럼 질문 자체가 반말이면 실측 11/11이 반말로
+    샜다 — "반말이어도 해요체로"라는 추상적 규칙도 6/6 그대로 샜고, 반말 어미
+    예시를 직접 금지해야 13/14로 거의 다 잡혔다. #40·#46·#51·#69는 프롬프트 안
+    다른 텍스트(few-shot·근거 JSON)가 규칙을 밀어낸 사례였는데, 이번엔 사용자
+    입력 자체가 원인이라는 점이 다르다.
+    """
+
+    assert "반말로 질문해도" in analysis.ANALYSIS_INSTRUCTION
+    assert "96,000원이야" in analysis.ANALYSIS_INSTRUCTION  # 금지 예시가 구체적으로 박혀 있어야 한다
+
+
 def test_analysis_answers_from_aggregate(fake_llm: FakeLLM) -> None:
     registry = ToolRegistry()
 
@@ -96,6 +111,30 @@ def test_analysis_answers_from_aggregate(fake_llm: FakeLLM) -> None:
     assert '"pending"' not in instruction
     assert '"points"' not in instruction
     assert response.tool_results[0].data is None
+
+
+def test_analysis_redirects_off_topic_finance_question_without_fallback(
+    fake_llm: FakeLLM,
+) -> None:
+    """소비 집계 밖 금융 상식은 고정 안내만 반환한다 (#66)."""
+
+    registry = ToolRegistry()
+    _register(registry, _analysis_data())
+    context = _context(
+        fake_llm,
+        {},
+        registry,
+        message="예금자보호 한도가 얼마예요?",
+    )
+    fake_llm.reply = analysis.ANALYSIS_OFF_TOPIC_REPLY
+
+    response = asyncio.run(analysis.handle(context))
+
+    assert response.reply == analysis.ANALYSIS_OFF_TOPIC_REPLY
+    assert response.fallback is False
+    instruction = fake_llm.calls[0][0]
+    assert analysis.ANALYSIS_OFF_TOPIC_REPLY in instruction
+    assert "소비 분석 집계와 무관" in instruction
 
 
 def test_analysis_returns_no_retrospect_reply_when_no_valid_clusters(
