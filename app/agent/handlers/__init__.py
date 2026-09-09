@@ -3,6 +3,7 @@
 from app.agent.handlers import (
     action_plan,
     analysis,
+    analysis_narrate,
     cluster_naming,
     finance_qa,
     reflection,
@@ -14,6 +15,7 @@ HANDLERS: dict[TaskType, Handler] = {
     TaskType.REFLECTION: reflection.handle,
     TaskType.ACTION_PLAN: action_plan.handle,
     TaskType.ANALYSIS: analysis.handle,
+    TaskType.ANALYSIS_NARRATE: analysis_narrate.handle,
     TaskType.CLUSTER_NAMING: cluster_naming.handle,
     TaskType.FINANCE_QA: finance_qa.handle,
 }
