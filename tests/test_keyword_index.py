@@ -1,5 +1,8 @@
 """BM25 키워드 인덱스가 형태소 분석·점수·순위를 올바르게 계산하는지 확인한다."""
 
+import subprocess
+import sys
+
 from app.rag.keyword_index import KeywordIndex, tokenize
 
 
@@ -79,3 +82,28 @@ def test_rank_excludes_chunks_with_zero_score() -> None:
     )
 
     assert index.rank("적금이란", top_k=15) == ["match"]
+
+
+def test_importing_the_app_does_not_load_the_kiwi_model() -> None:
+    """모듈을 import하는 것만으로 형태소 모델이 상주 메모리에 올라오면 안 된다.
+
+    `retriever.py`가 이 모듈을 무조건 import하므로, `Kiwi()`가 모듈 최상단으로
+    돌아가면 하이브리드를 쓰지 않는 기동(`DATABASE_URL` 미설정 · 인덱스 구축
+    실패)까지 모델 값을 그대로 문다 — 실측 `app.main` import 기준 108MB → 416MB
+    (#79 리뷰). 운영 EC2가 메모리 1.9GiB 한 대라(07 §12) 조용히 되돌아가면 곤란하다.
+
+    이 세션 안에서는 다른 테스트가 이미 분석기를 만들어 뒀을 수 있어, 깨끗한
+    하위 프로세스에서 확인한다.
+    """
+
+    probe = (
+        "import app.main, app.rag.keyword_index as k; "
+        "print('LAZY' if k._kiwi is None else 'EAGER')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    )
+
+    assert result.stdout.strip() == "LAZY", (
+        "import만으로 Kiwi가 만들어졌다 — `_analyzer()` 지연 생성이 풀렸는지 확인할 것"
+    )
