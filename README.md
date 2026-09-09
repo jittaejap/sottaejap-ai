@@ -165,6 +165,8 @@ curl -X POST http://localhost:8000/chat \
 
 `OPENAI_API_KEY`가 비어 있으면 `{"reply":"이 소비, 만족하셨나요?", ..., "fallback": true}`처럼 템플릿으로 응답한다. Spring `/internal-test/ai-ping`은 키 없이도 200이다.
 
+`TaskType` 6종을 하나씩 손으로 찔러보려면 `docs/postman/sottaejap-ai.postman_collection.json`을 가져온다(컬렉션 변수 `baseUrl` · `internalSecret`).
+
 Docker로 실행하려면:
 
 ```bash
