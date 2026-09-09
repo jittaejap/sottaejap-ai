@@ -96,7 +96,9 @@ ToolResult 조합 및 ChatResponse 생성 (TODO)
 │   ├── clients/spring_client.py  # Spring 내부 AI API 6종 — 유일한 HTTP 지점
 │   ├── schemas/              # chat · tool · common(TaskType · ReflectionStep)
 │   └── core/                 # config(Settings) · llm(타임아웃 · 재시도)
-├── scripts/ingest_financial_docs.py
+├── scripts/                  # 로컬 전용 도구 (OPENAI_API_KEY · DATABASE_URL 필요)
+│   ├── ingest_financial_docs.py
+│   └── eval_reflection_extraction.py  # 회고 추출 품질 실측 (DEVELOPMENT §11)
 ├── tests/                    # 외부 서비스 무호출
 ├── .github/                  # CI(pytest · docker build) · Issue · PR 템플릿
 ├── Dockerfile
