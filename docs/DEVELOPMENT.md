@@ -148,10 +148,15 @@ python scripts/ingest_financial_docs.py data/local/<문서>.txt --source <식별
 
 Chunk 수는 `chunk_text(chunk_size=800, overlap=100)` 기준이다.
 
-**적재 전에 해시를 먼저 대조한다.**
+**적재 전에 해시를 먼저 대조한다.** 쓰는 OS에 있는 것 하나로 돌린다.
 
 ```bash
-shasum -a 256 data/local/*.txt
+sha256sum data/local/*.txt        # Linux (EC2 포함)
+shasum -a 256 data/local/*.txt    # macOS
+```
+
+```powershell
+Get-FileHash -Algorithm SHA256 data\local\*.txt   # Windows PowerShell
 ```
 
 Chunk 수만으로는 원본이 바뀐 것을 못 잡는다. `chunk_text`가 순수 문자 수 슬라이싱이라
