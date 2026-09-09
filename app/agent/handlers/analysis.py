@@ -2,12 +2,20 @@
 
 집계 수치나 판정을 만들지 않고 Spring이 이미 계산한 값 안에서만 설명한다.
 '나만의 특징' 한 문장(ANALYSIS_NARRATE, FR-11-03)은 별도 Task다.
+
+숫자 검증은 `app/agent/handlers/number_guard.py`를 ANALYSIS_NARRATE와 공유한다
+(#43 · #48) — 프롬프트 지시만으로는 근거 밖 수치를 100% 못 막는다(E-79).
 """
 
 import json
 from typing import Any
 
 from app.agent.handlers.base import HandlerContext, tool_receipt
+from app.agent.handlers.number_guard import (
+    has_unverified_number,
+    known_numbers,
+    known_percentages,
+)
 from app.ai.fallback import ANALYSIS_UNAVAILABLE_REPLY
 from app.schemas.chat import ChatResponse
 from app.schemas.tool import ToolName
@@ -48,10 +56,21 @@ async def handle(ctx: HandlerContext) -> ChatResponse:
         f"{ANALYSIS_INSTRUCTION}\n"
         f"소비 분석 집계: {json.dumps(analysis, ensure_ascii=False)}"
     )
-    return ChatResponse(
-        reply=await ctx.generate(instruction),
-        tool_results=[receipt],
-    )
+    sentence = await ctx.generate(instruction)
+
+    groups = [analysis.get("byVerdict"), analysis.get("byCategory")]
+    if has_unverified_number(
+        sentence,
+        known_numbers(groups, year_month=analysis.get("analysisYearMonth")),
+        known_percentages=known_percentages(groups),
+    ):
+        return ChatResponse(
+            reply=ANALYSIS_UNAVAILABLE_REPLY,
+            fallback=True,
+            tool_results=[receipt],
+        )
+
+    return ChatResponse(reply=sentence, tool_results=[receipt])
 
 
 def _prompt_analysis(data: dict[str, Any]) -> dict[str, Any]:

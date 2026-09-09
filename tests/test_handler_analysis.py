@@ -68,6 +68,7 @@ def test_analysis_answers_from_aggregate(fake_llm: FakeLLM) -> None:
     response = asyncio.run(analysis.handle(context))
 
     assert response.reply == "LLM 응답"
+    assert response.fallback is False
     instruction = fake_llm.calls[0][0]
     assert "배달" in instruction
     assert "집계에 없는 수치나" in instruction
@@ -121,3 +122,38 @@ def test_analysis_returns_unavailable_reply_when_data_malformed(fake_llm: FakeLL
 
     assert response.reply == analysis.ANALYSIS_UNAVAILABLE_REPLY
     assert fake_llm.calls == []
+
+
+def _register(registry: ToolRegistry, data: dict[str, Any]) -> None:
+    async def handler(request: ToolRequest) -> ToolResult:
+        return ToolResult(tool_name=ToolName.ANALYSIS, data=data)
+
+    registry.register(ToolName.ANALYSIS, handler)
+
+
+def test_analysis_falls_back_when_reply_has_unverified_number(fake_llm: FakeLLM) -> None:
+    """근거에 없는 숫자가 나오면 폴백으로 바꾼다 (#48 · E-79 · E-101)."""
+
+    registry = ToolRegistry()
+    _register(registry, _analysis_data())
+    context = _context(fake_llm, {}, registry)
+    fake_llm.reply = "배달에 250000원이나 썼어요."  # 근거에 없는 금액
+
+    response = asyncio.run(analysis.handle(context))
+
+    assert response.reply == analysis.ANALYSIS_UNAVAILABLE_REPLY
+    assert response.fallback is True
+
+
+def test_analysis_allows_known_percent_from_share(fake_llm: FakeLLM) -> None:
+    """`share=0.36`은 문장에서 `36%`로 나올 수 있다 — 근거로 인정한다."""
+
+    registry = ToolRegistry()
+    _register(registry, _analysis_data())
+    context = _context(fake_llm, {}, registry)
+    fake_llm.reply = "지켜도 좋은 소비가 예산의 36%를 차지했어요."
+
+    response = asyncio.run(analysis.handle(context))
+
+    assert response.reply == "지켜도 좋은 소비가 예산의 36%를 차지했어요."
+    assert response.fallback is False
