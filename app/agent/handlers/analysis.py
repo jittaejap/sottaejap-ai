@@ -24,7 +24,7 @@ from app.schemas.tool import ToolName
 # 나눈다(server PR #53 · E-89) — 여기서도 같은 뜻으로 나눈다 (#50).
 NO_RETROSPECT_REPLY = "아직 돌아본 소비가 없어요. 몇 건만 회고하면 분석을 보여드릴 수 있어요."
 NO_MONTH_ACTIVITY_REPLY = (
-    "이번 달 거래는 아직 회고한 게 없어요. 몇 건만 회고하면 이번 달 분석을 보여드릴 수 있어요."
+    "이번 달 거래는 아직 회고한 게 없어요. 이번 달 거래를 몇 건 회고하면 분석을 보여드릴 수 있어요."
 )
 ANALYSIS_INSTRUCTION = (
     "아래 소비 분석 집계를 바탕으로 사용자 질문에 답하세요. 집계에 없는 수치나 "
