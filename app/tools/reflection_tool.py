@@ -19,11 +19,18 @@ class ReflectionTool:
         return ToolResult(tool_name=ToolName.REFLECTION, data=data)
 
     async def save(
-        self, user_id: str, reflection: ReflectionExtraction
+        self, user_id: str, transaction_id: int, reflection: ReflectionExtraction
     ) -> ToolResult:
-        data = await self._spring_client.save_reflection(
-            user_id,
-            reflection.model_dump(mode="json"),
-        )
+        body = {
+            "transaction_id": transaction_id,
+            "satisfaction": reflection.satisfaction.value,
+            "purpose": reflection.purpose.value
+            if reflection.purpose is not None
+            else None,
+            "companion": reflection.companion.value
+            if reflection.companion is not None
+            else None,
+            "repeat_intention": reflection.repeat_intention,
+        }
+        data = await self._spring_client.save_reflection(user_id, body)
         return ToolResult(tool_name=ToolName.REFLECTION, data=data)
-
