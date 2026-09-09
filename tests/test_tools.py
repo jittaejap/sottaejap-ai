@@ -27,6 +27,12 @@ class FakeSpringClient:
     async def get_behavior_analysis(self, user_id: str) -> dict[str, Any]:
         return {"user_id": user_id, "classification": "SPRING_RESULT"}
 
+    async def save_reflection(
+        self, user_id: str, reflection: dict[str, Any]
+    ) -> dict[str, Any]:
+        self.saved = (user_id, reflection)
+        return {"user_id": user_id, "status": "SAVED"}
+
 
 def test_analysis_tool_forwards_spring_result() -> None:
     tool = AnalysisTool(FakeSpringClient())  # type: ignore[arg-type]
@@ -201,3 +207,55 @@ def test_default_registry_absorbs_spring_http_error(
     # 내부 경로와 user_id가 메시지로 새지 않는다.
     assert "internal/ai" not in result.message
     assert "user-1" not in result.message
+
+
+def test_reflection_tool_save_sends_five_documented_fields() -> None:
+    from app.reflection.schemas import (
+        Companion,
+        Purpose,
+        ReflectionExtraction,
+        Satisfaction,
+    )
+    from app.tools.reflection_tool import ReflectionTool
+
+    fake = FakeSpringClient()
+    tool = ReflectionTool(fake)  # type: ignore[arg-type]
+    reflection = ReflectionExtraction(
+        purpose=Purpose.IMPULSE,
+        companion=Companion.ALONE,
+        satisfaction=Satisfaction.LOW,
+        repeat_intention=False,
+        needs_clarification=False,
+        uncertain_fields=[],
+    )
+
+    result = asyncio.run(tool.save("user-1", 1043, reflection))
+
+    user_id, body = fake.saved  # type: ignore[attr-defined]
+    assert user_id == "user-1"
+    assert body == {
+        "transaction_id": 1043,
+        "satisfaction": "LOW",
+        "purpose": "충동",
+        "companion": "혼자",
+        "repeat_intention": False,
+    }
+    assert result.tool_name == ToolName.REFLECTION
+    assert result.data == {"user_id": "user-1", "status": "SAVED"}
+
+
+def test_reflection_tool_save_allows_none_purpose_and_companion() -> None:
+    from app.reflection.schemas import ReflectionExtraction, Satisfaction
+    from app.tools.reflection_tool import ReflectionTool
+
+    fake = FakeSpringClient()
+    tool = ReflectionTool(fake)  # type: ignore[arg-type]
+    reflection = ReflectionExtraction(satisfaction=Satisfaction.UNKNOWN)
+
+    asyncio.run(tool.save("user-1", 1043, reflection))
+
+    _, body = fake.saved  # type: ignore[attr-defined]
+    assert body["purpose"] is None
+    assert body["companion"] is None
+    assert "needs_clarification" not in body
+    assert "uncertain_fields" not in body
