@@ -1,79 +1,124 @@
 # 소때잡 AI Server
 
-소때잡의 자연어 소비 회고, Tool Calling, 금융 지식 검색을 담당하는 Python/FastAPI 서버다. 이 저장소를 받으면 `POST /chat`을 로컬에서 띄우고, Spring `sottaejap-server`와 공유 시크릿으로 연결하고, 기능을 안전하게 추가할 수 있다.
+소때잡(소비의 '때'를 잡다)의 AI 서버다. 필요한 거래를 며칠 뒤 대화로 회고하고, Spring이 계산한 소비 분석을 사람 말로 풀어 주고, 금융 질문에 근거 문서로 답한다. 2026 KB IT's Your Life 해커톤 본선 프로젝트다.
+
+계산과 판정은 Spring이 하고, 이 서버는 **근거 안에서만 말한다.** 금융 질문은 근거 문서가 없으면 LLM을 부르지 않고 모른다고 답하고, 분석 문장에 집계에 없는 숫자가 나오면 그 문장을 버린다. 검색은 유사도 하한으로 근거 없는 질문 11/14를 막았고, 그 하한에 같이 막힌 정답형 질문은 벡터와 BM25를 합친 하이브리드와 이중 게이트로 다시 찾게 했다(실패하던 8개 모두).
 
 코딩 에이전트(Claude Code · Codex)와 함께 작업한다면 [AGENTS.md](AGENTS.md)를 먼저 읽는다. 브랜치·커밋·PR 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)에 있다. 계약의 정본은 문서 저장소 [`sottaejap-docs`](https://github.com/jittaejap/sottaejap-docs)의 `01_결정로그.md`·`05_API_명세서.md` §3·`07_기술스택_레포구성.md`다.
 
-## AI 서버 역할
+---
 
-AI 서버는 다음 작업을 조정한다.
+## 필요한 문서 찾기
 
-- Single Agent 실행과 사용자 자연어 의도 파악
-- 현재 Task Context를 이용한 Tool 선택
-- 사용자 회고의 후보 값 구조화와 사용자 확인 요청 (표준 태그 7종 · 6종만 제안)
-- Tool 결과 조합 및 자연어 설명 — 묶음 이름 짓기(⑤) · 회고 대화(⑥) · 소비 분석 문장화(⑨)
-- 금융 질문을 위한 내부 RAG 호출 (P2)
-- Spring 서비스와의 HTTP 통신
-- LLM 장애 시 템플릿 응답으로 대체 (`fallback: true`)
+| 하려는 일 | 문서 |
+| --- | --- |
+| 처음 참여한다 | [온보딩](docs/ONBOARDING.md) |
+| Tool 추가, Spring 연동, RAG, 테스트 규칙 확인 | [개발 문서](docs/DEVELOPMENT.md) 1~9절 |
+| 금융 질문 품질을 어떻게 쟀는지 확인 | [개발 문서](docs/DEVELOPMENT.md) 10·16·18절 |
+| 회고 추출 품질을 어떻게 쟀는지 확인 | [개발 문서](docs/DEVELOPMENT.md) 11절 |
+| 프롬프트 말투·폴백 사고 기록 | [개발 문서](docs/DEVELOPMENT.md) 12~15·17절 |
+| `/chat`을 작업 종류별로 직접 호출 | [Postman 컬렉션](docs/postman/sottaejap-ai.postman_collection.json) |
+| 모듈별 책임 | `app/agent`, `app/rag`, `app/reflection`, `app/tools`의 README |
 
-데이터 영속화, 서비스 규칙, 수치 계산, 최종 판정은 AI 서버의 책임이 아니다.
+---
 
-## Spring과 AI 역할 분리
+## 아키텍처
 
-| Spring | Python AI Server |
+<img alt="Vue 앱은 Spring만 부른다. Spring이 POST /chat 하나로 AI 서버를 부르고, AI 서버의 단일 에이전트가 작업 종류에 맞는 처리기를 고른다. 데이터가 필요하면 Spring 내부 API를 다시 부르고, 금융 질문은 pgvector와 BM25로 검색한다" src="docs/img/architecture.svg">
+
+| Spring (`sottaejap-server`) | Python AI Server (이 레포) |
 |---|---|
-| 거래·회고·목표 데이터 관리 | Single Agent와 자연어 이해 |
-| 개인 Baseline 및 Anomaly Score 계산 | 자연어 회고 구조화 |
-| 후보 선정, 반복 행동 최종 분류, `reason_code` 산출 | Tool 선택과 결과 조합 |
-| 만족도 보정, 절감액·감소액·달성률 계산 | 금융 RAG와 자연어 설명 |
+| 거래·회고·목표 데이터 관리 | 처리기 라우팅과 자연어 설명 |
+| 개인 Baseline 및 Anomaly Score 계산 | 회고 후보 값 구조화 |
+| 후보 선정, 반복 행동 최종 분류, `reason_code` 산출 | 금융 RAG 검색과 근거 기반 답변 |
+| 만족도 보정, 절감액·감소액·달성률 계산 | 숫자 가드, 말투 규칙 |
 | Rule Engine과 최종 데이터·판정(`verdict`) | Spring API 통신, LLM 폴백 |
-
-핵심 원칙은 다음과 같다.
 
 ```text
 Spring = 데이터 / 규칙 / 계산 / 최종 판정
-Python = Agent / 자연어 / Tool Calling / RAG / 설명
+Python = 자연어 / 설명 / 검색
 ```
 
-`analysis_tool`도 분석 알고리즘을 구현하지 않는다. 호출 흐름은 `Agent → analysis_tool → SpringClient → Spring Analysis API → Rule Engine`이다.
+- Spring이 AI를 부르는 경로는 `POST /chat` 하나다. AI가 데이터가 필요하면 Spring 내부 AI API 6종을 다시 부른다(pull). 두 방향 모두 같은 공유 시크릿(`X-Internal-Secret`)으로 인증한다.
+- 전체 채팅 기록을 장기 기억으로 쓰지 않는다. Task 상태는 Spring/DB가 관리하고, AI는 요청에 담긴 현재 Task, 구조화된 상태, 최근 대화만 쓴다.
 
-## 전체 Architecture
+---
 
-```text
-사용자
-  ↓
-Vue (sottaejap-client)
-  ↓
-Spring (sottaejap-server) ── AiClient ──► POST /chat  (snake_case · X-Internal-Secret)
-                                              ↓
-                                     FastAPI / Single Agent
-                                              ↓
-                                            Tool
-                    ├─ 거래·회고·분석·행동 제안·메모리 → SpringClient → Spring /internal/ai/users/{userId}/*  (X-Internal-Secret)
-                    └─ 금융 지식 → Python Financial RAG → pgvector (P2 · TODO)
-```
+## 쉽게 말하면
 
-Spring이 AI를 부르는 경로는 `POST /chat` 하나다. AI가 데이터가 필요하면 Spring 내부 AI API 6종을 다시 부른다(pull). 두 방향 모두 같은 공유 시크릿으로 인증한다.
-
-## 요청 흐름
+### 요청 하나가 지나가는 길
 
 ```text
-ChatRequest (task_context.task · state · recent_messages)
-  ↓
 POST /chat  ← X-Internal-Secret 검사 (없거나 다르면 401)
   ↓
-SingleAgent
+SingleAgent.run  — task_context.task로 처리기 선택 (app/agent/handlers/__init__.py)
   ↓
-LLM 호출 (6초 · 재시도 1회) ──실패──► app/ai/fallback.py 템플릿 · fallback=true
+처리기 — 필요하면 Tool 호출 (Spring 내부 API · 금융 RAG) → LLM 1회 → 검사
   ↓
-현재 Task Context 확인 및 Tool 선택 (TODO)
-  ↓
-Spring API 또는 Financial RAG (TODO)
-  ↓
-ToolResult 조합 및 ChatResponse 생성 (TODO)
+답변 2,000자 상한 → ChatResponse
 ```
 
-전체 채팅 기록을 모델의 장기 기억으로 사용하지 않는다. 실제 Task 상태는 Spring/DB가 관리하고, AI 서버는 요청에 포함된 현재 Task, 구조화된 현재 상태, 필요한 최소 최근 대화만 사용한다. `task_context.task`는 `REFLECTION` / `ANALYSIS` / `ACTION_PLAN` / `CLUSTER_NAMING` / `ANALYSIS_NARRATE` 5종이고 `state`의 구조는 05 §3이 정본이다.
+| 작업(`task`) | 처리기가 하는 일 |
+| --- | --- |
+| `REFLECTION` | 6단계 회고 대화(인사 → 만족도 → 목적 → 동행인 → 반복 의향 → 확인). 후보 값과 공감 한마디를 LLM 1회로 받는다 |
+| `ANALYSIS` | Spring이 계산한 소비 집계 안에서 자유 질문에 답한다. 집계와 무관한 질문은 고정 안내 |
+| `ANALYSIS_NARRATE` | '나만의 특징' 한 문장 |
+| `ACTION_PLAN` | Spring이 계산한 행동 제안의 이유를 대화체로 설명 |
+| `CLUSTER_NAMING` | Spring이 만든 소비 묶음에 12자 이내 이름 |
+| `FINANCE_QA` | 금융 질문에 근거 문서로 답한다. 근거가 없으면 LLM 없이 고정 문장 |
+
+처리기는 작업 종류로 코드가 고르고, 처리기가 Tool을 직접 호출한다. LLM이 Tool을 고르는 function calling은 쓰지 않는다.
+
+**LLM이 실패하면**: 1회 6초, 일시적 오류(타임아웃·연결·429·5xx)만 1회 재시도한다(`app/core/llm.py`). 그래도 실패하거나 키가 없으면 템플릿 답변에 `fallback: true`를 붙여 **200**으로 돌려준다(`app/ai/fallback.py`). Tool 호출이 실패하면 `HandlerContext.call_tool`이 `success: false` 결과로 바꿔 처리기가 근거없음 경로로 간다.
+
+### 금융 질문의 검색 게이트
+
+<img alt="질문을 벡터와 BM25로 각각 15개씩 찾아 순위로 합친다. 코사인 0.48 이상이거나, BM25에 걸리고 코사인 0.25 이상인 후보만 근거로 남긴다. 근거가 없으면 고정 문장으로 답한다" src="docs/img/retrieval-gate.svg">
+
+1. 질문을 임베딩해 pgvector 코사인으로 15개, Kiwi로 뽑은 명사로 BM25 15개를 찾는다.
+2. 두 순위를 RRF(k=60)로 합친다. 점수 단위가 달라 점수 대신 순위로 합친다.
+3. 코사인 0.48 이상이거나, BM25에 걸리면서 코사인 0.25 이상인 후보만 근거로 남긴다(`app/rag/retriever.py`).
+4. 근거가 있으면 해요체 규칙을 근거 앞뒤에 둔 지시문으로 LLM이 답한다. 없으면 "확인할 수 있는 금융 자료를 찾지 못했어요."
+
+- 0.48은 정답형 15개·근거없음형 14개 질문의 1위 유사도 분포로 정했다(#28).
+- BM25는 "적금이란"처럼 짧은 질문이 하한에 근소하게 막히는 문제를 풀려고 더했다(#78).
+- BM25 점수만으로는 작은 코퍼스에서 무관한 질문을 못 걸러서, BM25로 살린 후보에도 코사인 0.25 하한을 둔다.
+- BM25는 기동 때 `financial_chunks`를 한 번 읽어 메모리에 짓는다. 실패하면 벡터 전용으로 계속 뜬다.
+
+### 숫자 가드
+
+`ANALYSIS` · `ANALYSIS_NARRATE` · `ACTION_PLAN`은 LLM이 쓴 문장의 숫자를 모두 뽑아 Spring이 준 집계 숫자와 대조한다(`app/agent/handlers/number_guard.py`). 하나라도 근거에 없으면 그 문장을 버리고 템플릿으로 바꾼다.
+
+- `5천만`·`1억`처럼 천·만·억이 붙은 숫자는 실제 배수로 바꿔 대조한다(#66).
+- 한 자리 정수는 서수일 수 있어 건너뛰되, 뒤에 `%`가 오면 반드시 검사한다.
+- 퍼센트는 `share`에서 만든 별도 목록과 대조해 "3월"의 3과 "3%"를 섞지 않는다.
+
+---
+
+## 측정에서 무엇을 보았나
+
+단위 테스트는 LLM을 가짜로 바꿔 돌리므로, 실제 모델의 동작은 작업마다 반복 호출해 따로 쟀다. 자세한 기록은 [개발 문서](docs/DEVELOPMENT.md)에 있다.
+
+| 항목 | 결과 | 근거 |
+| --- | --- | --- |
+| 유사도 하한 0.48 | 근거없음형 11/14 차단, 정답형 10/15 유지(5개 같이 막힘) | #73 |
+| 하이브리드 + 이중 게이트 | 실패하던 정답형 8개 모두 정답 문단(인플레이션은 문서 보강 병행), 무관 질문 4개 계속 차단 | #79, 18절 |
+| 회고 추출 | 29문장 × 10회, 재현율 250/250 유지, 과잉추론 22건 → 0건 | 11절 |
+| 행동 제안 근거 밖 숫자 | 2/2 발생 → 숫자 가드로 6/6 폴백 | #63 |
+| 묶음 이름 빈 입력 | 5/5 문장 잘림 → LLM 호출 생략, 3/3 정상 | #63, 13절 |
+| 분석 한 줄 요약 반말 | 5/8 → 0/10 | #63 |
+| 소비 분석 반말 질문 | 11/11 반말 → 13/14 정상 | 14절 |
+
+---
+
+## 알려진 한계
+
+- 시점이 있는 질문(예: 금리 전망)은 코퍼스 속 예시 수치를 실제 답처럼 전할 수 있다(10절 알려진 한계).
+- 측정은 질문 8~29개 규모의 재현 확인이라 통계적 지표가 아니다.
+- 말투 규칙은 13/14로 100%가 아니다.
+- BM25 인덱스는 인메모리·단일 인스턴스 전제다. 기동 때 구축이 실패하면 재기동 전까지 벡터 전용으로 동작한다(18절).
+
+---
 
 ## Directory 구조
 
@@ -84,42 +129,41 @@ ToolResult 조합 및 ChatResponse 생성 (TODO)
 ├── README.md
 ├── docs/
 │   ├── ONBOARDING.md
-│   └── DEVELOPMENT.md
+│   ├── DEVELOPMENT.md        # 개발 규칙과 실측 기록
+│   ├── img/                  # README 그림
+│   └── postman/              # TaskType 6종 호출 컬렉션
 ├── app/
-│   ├── main.py               # FastAPI 앱 · GET /health
+│   ├── main.py               # FastAPI 앱 · GET /health · 기동 때 RAG·BM25 준비
 │   ├── api/chat.py           # POST /chat · X-Internal-Secret 검사
-│   ├── agent/                # SingleAgent · prompt · state · tool_registry
-│   ├── ai/fallback.py        # LLM 장애 템플릿 (FR-04-15)
+│   ├── agent/                # SingleAgent · handlers(작업 6종 · number_guard) · prompt · state
+│   ├── ai/fallback.py        # LLM 장애·근거없음 템플릿
 │   ├── tools/                # Spring · RAG를 감싸는 얇은 Tool 6종
-│   ├── reflection/           # 회고 후보 DTO · 표준 태그 enum · extract/normalize/validate
-│   ├── rag/                  # 금융 RAG 경계 (P2)
+│   ├── reflection/           # 회고 후보 추출 · 표준 태그 enum · normalize/validate
+│   ├── rag/                  # 임베딩 · pgvector 검색 · BM25(keyword_index) · 게이트
 │   ├── clients/spring_client.py  # Spring 내부 AI API 6종 — 유일한 HTTP 지점
 │   ├── schemas/              # chat · tool · common(TaskType · ReflectionStep)
 │   └── core/                 # config(Settings) · llm(타임아웃 · 재시도)
 ├── scripts/                  # 로컬 전용 도구 (OPENAI_API_KEY · DATABASE_URL 필요)
 │   ├── ingest_financial_docs.py
 │   └── eval_reflection_extraction.py  # 회고 추출 품질 실측 (DEVELOPMENT §11)
+├── local/                    # FINANCE_QA 로컬 검증 화면 · LLM-as-a-Judge (DEVELOPMENT §10)
 ├── tests/                    # 외부 서비스 무호출
-├── .github/                  # CI(pytest · docker build) · Issue · PR 템플릿
+├── .github/                  # CI(pytest · docker build) · 배포 · Issue · PR 템플릿
 ├── Dockerfile
 ├── requirements.txt          # 범위
 ├── requirements.lock         # 고정 (Python 3.12 컨테이너에서 생성)
 └── .env.example
 ```
 
-각 세부 모듈의 책임은 해당 폴더의 README에 설명한다. 처음 참여한다면 [온보딩 문서](docs/ONBOARDING.md)를 먼저 읽는다.
-
 ## 기술 스택
 
 - Python 3.12 (팀 통일 — E-26)
-- FastAPI, Uvicorn
-- Pydantic, pydantic-settings
-- httpx
+- FastAPI, Uvicorn, Pydantic, pydantic-settings, httpx
 - OpenAI Python SDK — `gpt-4o-mini` (E-25)
-- PostgreSQL/pgvector (금융 RAG 저장소, P2)
+- PostgreSQL 18 + pgvector(asyncpg), Kiwi(`kiwipiepy`) + `rank-bm25`
 - pytest
 
-LangGraph, CrewAI 같은 Agent Framework나 복잡한 RAG Framework는 초기 범위에 포함하지 않는다. uv·pyproject를 쓰지 않고 `pip` + `venv`로 통일한다.
+LangGraph, CrewAI 같은 Agent Framework나 복잡한 RAG Framework는 쓰지 않는다. uv·pyproject를 쓰지 않고 `pip` + `venv`로 통일한다.
 
 ## 환경 변수
 
@@ -133,7 +177,7 @@ LangGraph, CrewAI 같은 Agent Framework나 복잡한 RAG Framework는 초기 �
 | `SPRING_BASE_URL` | Spring 연동 시 | Spring 서비스 Base URL | `http://localhost:8080` |
 | `SPRING_TIMEOUT_SECONDS` | 아니요 | AI → Spring 내부 API Timeout(초) | `3` |
 | `INTERNAL_SHARED_SECRET` | **예** | `X-Internal-Secret` 공유 시크릿. `sottaejap-server`의 `AI_SHARED_SECRET`과 같은 값. **비어 있으면 `/chat`이 전부 401** | 없음 |
-| `DATABASE_URL` | RAG 연결 후 | PostgreSQL/pgvector 연결 문자열 | 없음 |
+| `DATABASE_URL` | 금융 RAG 사용 시 | PostgreSQL/pgvector 연결 문자열(asyncpg 형식). 비어 있으면 금융 질문은 근거없음 답변 | 없음 |
 | `AI_SERVER_HOST` | 아니요 | Uvicorn 바인딩 Host | `0.0.0.0` |
 | `AI_SERVER_PORT` | 아니요 | Uvicorn 포트 | `8000` |
 | `PYTHONUTF8` | 아니요 | Windows 인코딩 강제 (07 §5-3) | `1` |
@@ -180,9 +224,13 @@ docker run --rm -p 8000:8000 --env-file .env sottaejap-ai
 pytest
 ```
 
+2026-10-08 `main` 기준 285개가 통과한다.
+
 테스트는 실제 OpenAI API, Spring API, PostgreSQL을 호출하지 않는다. `tests/conftest.py`가 시크릿을 고정하고 키를 비운다.
 
 ## 배포
+
+> 해커톤 이후 Deploy 워크플로는 꺼 두었다(2026-10-08). 다시 켜면 아래 흐름 그대로 동작한다.
 
 `main`에 병합되고 **CI가 통과하면** `.github/workflows/deploy.yml`이 자동으로 배포한다.
 GitHub Actions가 이미지를 굽고, EC2는 받아서 켜기만 한다.
@@ -219,27 +267,6 @@ EC2의 `~/apps/.env`에서 온다. 이 저장소가 관리하지 않고 사람�
 cd ~/apps/sottaejap-server/deploy
 AI_TAG=<이전 커밋 해시> docker compose --env-file ~/apps/.env up -d ai
 ```
-
-## 현재 구현 범위
-
-완료:
-
-- FastAPI 앱, `GET /health`, `POST /chat` + `X-Internal-Secret` 검사
-- `ChatRequest → SingleAgent → LLM 1회 호출 또는 템플릿 폴백 → ChatResponse(fallback)` 흐름
-- LLM 타임아웃 6초 · 재시도 1회 (`app/core/llm.py`)
-- 폴백 템플릿 — 작업 5종 · 회고 단계 6종 · `reason_code` 5종 (`app/ai/fallback.py`)
-- `SpringClient` 6종 경로 · 헤더 · 봉투 해제 (05 §3)
-- 회고 DTO — 표준 태그 enum(목적 7 · 동행인 6) · 만족도 3택, 자유 문자열 거부
-- 요청 단위 Agent 상태와 Tool Registry 골격, 여섯 개 Tool 경계
-- 단순 Chunker, Embedding/Retriever 경계
-- Dockerfile · `requirements.lock` · CI(pytest · docker build)
-
-TODO:
-
-- LLM 기반 의도 파악과 OpenAI Tool Calling 실행 루프
-- 회고 Structured Output 추출과 사용자 확인 대화 (`normalize_purpose`·`normalize_companion` 경유)
-- 금융 문서 Parser, Embedding, pgvector 적재 및 Top-K 검색 (P2 · FR-12)
-- Tool 실패/Timeout을 `tool_results[].success = false`로 변환하는 정책
 
 ## 개발 원칙
 
